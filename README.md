@@ -113,5 +113,15 @@ explicit goal.
 
 ## Status
 
-Early scaffold. Fetch sources, scoring, review UI, and apply are stubs;
-the charts action has not yet been ported from `billboard_tag.py`.
+- **Charts action**: ported from `billboard_tag.py` as-is, working.
+- **Genre/Subgenre fetch sources**: MusicBrainz, Discogs, and the local
+  `discogs-maest` audio model are implemented and tested against a real
+  Lexicon library. `llm_web_search.py` is a stub, on hold over web
+  search API cost.
+- **Scoring**: implemented (`scoring.py`, weighted noisy-OR).
+- **Load → fetch → score/plan**: implemented (`plan.py`), tested
+  end-to-end against a real library over the Lexicon Local API -
+  reads tags/tracks, resolves candidate tags against what already
+  exists (never proposes creating a tag), and writes a plan of
+  auto-include vs. needs-review rows.
+- **Review UI, apply**: still stubs. Next up.

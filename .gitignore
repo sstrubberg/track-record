@@ -12,9 +12,10 @@ env/
 # Secrets - real tokens go here, never committed. See .env.example.
 companion-app/.env
 
-# Local caches / generated review output
+# Local caches / generated review output - contains real library data
 companion-app/**/*_cache.json
 companion-app/**/*_plan.csv
+companion-app/**/*_plan.json
 logs/
 
 # Downloaded model weights (~330 MB) - fetched on first use, not committed
