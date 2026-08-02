@@ -105,6 +105,90 @@ def plan_track(track: dict, by_label: dict, weights: dict, suggested_category_id
     return {"auto": auto, "review": review, "create": create}
 
 
+def _resolve_suggested_category(weights: dict, on_status=None) -> int | None:
+    """Purely a convenience default for the review screen's category
+    dropdown - every new-tag proposal is always shown there for a
+    human decision, regardless of whether this resolves to anything."""
+    name = (weights.get("new_tag_category") or "").strip()
+    if not name:
+        return None
+    categories = lexicon_client.fetch_categories()
+    match = next((c for c in categories if c["label"].lower() == name.lower()), None)
+    if match is None and on_status:
+        on_status(
+            f"  note: new_tag_category '{name}' not found in Lexicon - no "
+            f"default category will be pre-selected in review"
+        )
+    return match["id"] if match else None
+
+
+def generate_plan(
+    limit: int | None = None,
+    track_id: int | None = None,
+    out_path: str | Path | None = None,
+    on_status=None,
+    on_track_planned=None,
+) -> dict:
+    """Runs the whole load -> fetch -> score pipeline in-process and
+    writes the plan to disk. Used by both the CLI below and
+    review_ui.py's "Generate Plan" button - one implementation either
+    way calls into.
+
+    on_status(message), if given, is called for one-off progress lines
+    (tag index size, library size, ...). on_track_planned(i, total,
+    track, result), if given, is called once per track, after it's been
+    planned - result is plan_track()'s return value for that track.
+    """
+    def status(msg):
+        if on_status:
+            on_status(msg)
+
+    weights = scoring.load_weights()
+
+    status("reading tag index...")
+    by_id, by_label = lexicon_client.fetch_tag_index()
+    status(f"  {len(by_id)} tags in Lexicon")
+
+    suggested_category_id = _resolve_suggested_category(weights, on_status)
+
+    status("reading library...")
+    tracks = lexicon_client.fetch_library()
+    status(f"  {len(tracks)} tracks")
+
+    if track_id is not None:
+        tracks = [t for t in tracks if t["id"] == track_id]
+    if limit:
+        tracks = tracks[:limit]
+
+    status(f"\nplanning {len(tracks)} track(s)...\n")
+    auto_all, review_all, create_all = [], [], []
+    for i, track in enumerate(tracks, 1):
+        result = plan_track(track, by_label, weights, suggested_category_id)
+        auto_all.extend(result["auto"])
+        review_all.extend(result["review"])
+        create_all.extend(result["create"])
+        if on_track_planned:
+            on_track_planned(i, len(tracks), track, result)
+
+    plan = {
+        "version": 1,
+        "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "auto": auto_all,
+        "review": review_all,
+        "create": create_all,
+    }
+    path = Path(out_path) if out_path else PLAN_FILE
+    path.write_text(json.dumps(plan, indent=1))
+
+    status(
+        f"\n{len(auto_all)} auto-include, {len(review_all)} need review, "
+        f"{len(create_all)} propose a new tag (pick its category in review_ui.py)"
+    )
+    status(f"plan -> {path}")
+
+    return plan
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=None, help="only plan the first N tracks")
@@ -112,44 +196,8 @@ def main():
     p.add_argument("--out", default=None, help="alternate plan output path")
     args = p.parse_args()
 
-    weights = scoring.load_weights()
-
-    print("reading tag index...")
-    by_id, by_label = lexicon_client.fetch_tag_index()
-    print(f"  {len(by_id)} tags in Lexicon")
-
-    # Purely a convenience default for the review screen's category
-    # dropdown - every new-tag proposal is always shown there for a
-    # human decision, regardless of whether this resolves to anything.
-    suggested_category_id = None
-    new_tag_category_name = (weights.get("new_tag_category") or "").strip()
-    if new_tag_category_name:
-        categories = lexicon_client.fetch_categories()
-        match = next((c for c in categories if c["label"].lower() == new_tag_category_name.lower()), None)
-        suggested_category_id = match["id"] if match else None
-        if suggested_category_id is None:
-            print(
-                f"  note: new_tag_category '{new_tag_category_name}' not found in "
-                f"Lexicon - no default category will be pre-selected in review"
-            )
-
-    print("reading library...")
-    tracks = lexicon_client.fetch_library()
-    print(f"  {len(tracks)} tracks")
-
-    if args.track_id is not None:
-        tracks = [t for t in tracks if t["id"] == args.track_id]
-    if args.limit:
-        tracks = tracks[: args.limit]
-
-    print(f"\nplanning {len(tracks)} track(s)...\n")
-    auto_all, review_all, create_all = [], [], []
-    for i, track in enumerate(tracks, 1):
-        print(f"[{i}/{len(tracks)}] {track.get('artist')} - {track.get('title')}")
-        result = plan_track(track, by_label, weights, suggested_category_id)
-        auto_all.extend(result["auto"])
-        review_all.extend(result["review"])
-        create_all.extend(result["create"])
+    def on_track_planned(i, total, track, result):
+        print(f"[{i}/{total}] {track.get('artist')} - {track.get('title')}")
         for row in result["auto"]:
             print(f"    AUTO    {row['tag']}  ({row['confidence']:.0%})")
         for row in result["review"]:
@@ -158,25 +206,13 @@ def main():
         for row in result["create"]:
             print(f"    CREATE  {row['tag']}  ({row['confidence']:.0%}) - new tag, needs review")
 
-    out_path = Path(args.out) if args.out else PLAN_FILE
-    out_path.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "auto": auto_all,
-                "review": review_all,
-                "create": create_all,
-            },
-            indent=1,
-        )
+    generate_plan(
+        limit=args.limit,
+        track_id=args.track_id,
+        out_path=args.out,
+        on_status=print,
+        on_track_planned=on_track_planned,
     )
-
-    print(
-        f"\n{len(auto_all)} auto-include, {len(review_all)} need review, "
-        f"{len(create_all)} propose a new tag (pick its category in review_ui.py)"
-    )
-    print(f"plan -> {out_path}")
 
 
 if __name__ == "__main__":
