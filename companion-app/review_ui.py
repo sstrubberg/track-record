@@ -59,7 +59,7 @@ def group_by_track(review_rows: list[dict], create_rows: list[dict]) -> dict:
 
 def build_ui() -> None:
     state = {"plan": load_plan(PLAN_FILE)}
-    progress = {"current": 0, "total": 0, "artist": "", "title": ""}
+    progress = {"current": 0, "total": 0, "artist": "", "title": "", "result": None, "rendered": -1}
 
     ui.label("Track Record — Genre/Subgenre Review").classes("text-xl font-bold")
 
@@ -70,11 +70,39 @@ def build_ui() -> None:
     progress_label = ui.label("").classes("text-gray-500")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
     progress_bar.visible = False
+    preview_container = ui.column().classes("gap-0")
+
+    _KIND_CLASSES = {
+        "AUTO": "text-green-600",
+        "REVIEW": "text-gray-400",
+        "REVIEW (low confidence)": "text-orange-400",
+        "CREATE": "text-blue-400",
+    }
+
+    def render_preview(result: dict) -> None:
+        preview_container.clear()
+        with preview_container:
+            for row in result["auto"]:
+                kind = "AUTO"
+                ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
+            for row in result["review"]:
+                kind = "REVIEW (low confidence)" if row.get("low_confidence") else "REVIEW"
+                ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
+            for row in result["create"]:
+                kind = "CREATE"
+                ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%}) - new tag").classes(f"text-sm {_KIND_CLASSES[kind]}")
 
     def update_progress() -> None:
-        if progress["total"]:
-            progress_label.text = f"[{progress['current']}/{progress['total']}] {progress['artist']} — {progress['title']}"
-            progress_bar.value = progress["current"] / progress["total"]
+        if not progress["total"]:
+            return
+        progress_label.text = f"[{progress['current']}/{progress['total']}] {progress['artist']} — {progress['title']}"
+        progress_bar.value = progress["current"] / progress["total"]
+        # Only redraw the preview when a new track's result has actually
+        # arrived - not every timer tick - so it reads as "this track's
+        # findings", replaced by the next track's, not a flicker.
+        if progress["result"] is not None and progress["rendered"] != progress["current"]:
+            progress["rendered"] = progress["current"]
+            render_preview(progress["result"])
 
     ui.timer(0.3, update_progress)
 
@@ -163,11 +191,16 @@ def build_ui() -> None:
     async def generate():
         generate_button.disable()
         progress_bar.visible = True
-        progress.update(current=0, total=0, artist="", title="")
+        progress.update(current=0, total=0, artist="", title="", result=None, rendered=-1)
+        preview_container.clear()
         progress_label.text = "starting..."
 
-        def on_track_planned(i, total, track, _result):
-            progress.update(current=i, total=total, artist=track.get("artist") or "", title=track.get("title") or "")
+        def on_track_planned(i, total, track, result):
+            progress.update(
+                current=i, total=total,
+                artist=track.get("artist") or "", title=track.get("title") or "",
+                result=result,
+            )
 
         limit = int(limit_input.value) if limit_input.value else None
 
@@ -198,7 +231,21 @@ def build_ui() -> None:
 
 def main():
     build_ui()
-    ui.run(native=True, window_size=(900, 700), reload=False, title="Track Record - Genre Review")
+    ui.run(
+        native=True,
+        window_size=(900, 700),
+        reload=False,
+        title="Track Record - Genre Review",
+        # discogs-maest inference briefly saturates every CPU core, which
+        # can delay the UI's own websocket heartbeat long enough that the
+        # client decides the connection dropped ("Connection lost /
+        # trying to reconnect"). Nothing is actually wrong - the plan
+        # generation keeps running in its own thread regardless - so
+        # give the heartbeat enough slack (ping_interval/ping_timeout are
+        # derived from this, see NiceGUI's nicegui.py) that a single
+        # track's worth of CPU load never trips it.
+        reconnect_timeout=30,
+    )
 
 
 if __name__ in {"__main__", "__mp_main__"}:
