@@ -3,6 +3,7 @@ nicegui[native]
 
 # Config
 pyyaml
+python-dotenv
 
 # fetch/musicbrainz.py, fetch/discogs.py
 requests>=2.31

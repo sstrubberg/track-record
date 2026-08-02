@@ -9,6 +9,9 @@ companion-app/**/__pycache__/
 venv/
 env/
 
+# Secrets - real tokens go here, never committed. See .env.example.
+companion-app/.env
+
 # Local caches / generated review output
 companion-app/**/*_cache.json
 companion-app/**/*_plan.csv
