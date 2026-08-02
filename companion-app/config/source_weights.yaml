@@ -1,0 +1,25 @@
+# Editable per-DJ retuning of how much each fetch source is trusted.
+# Does not require touching code - see scoring.py for how these combine.
+#
+# confidence = 1 - Π(1 - weight_i * score_i)  across sources that found the tag
+#
+# Metadata sources (musicbrainz, discogs) report score=1 (found it or didn't);
+# model sources (audio_model, llm_web_search) report their own probability
+# per tag, so weight here is the only lever for those.
+
+sources:
+  musicbrainz: 0.9
+  discogs: 0.85
+  llm_web_search: 0.6
+  audio_model: 0.7
+
+# Tags clearing this combined confidence, OR backed by this many
+# independently agreeing sources, are auto-included: written straight to
+# applied_log and never shown in the review screen.
+auto_include:
+  min_agreeing_sources: 2
+  min_confidence: 0.85
+
+# Tags below this confidence still surface in review, just visually
+# flagged and unchecked by default (same as every other non-auto tag).
+low_confidence_threshold: 0.35

@@ -1,0 +1,18 @@
+# Lexicon writes generated data files into this at runtime
+lexicon-plugin/Files/
+
+# Python
+companion-app/**/__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Local caches / generated review output
+companion-app/**/*_cache.json
+companion-app/**/*_plan.csv
+logs/
+
+# macOS
+.DS_Store

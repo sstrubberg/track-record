@@ -1,0 +1,14 @@
+# Review UI (native desktop window via pywebview, not a browser tab)
+nicegui[native]
+
+# Config
+pyyaml
+
+# fetch/musicbrainz.py, fetch/discogs.py
+requests
+
+# fetch/audio_model.py - discogs-maest inference
+essentia-tensorflow
+
+# fetch/llm_web_search.py
+anthropic

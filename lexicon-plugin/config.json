@@ -1,0 +1,47 @@
+{
+  "id": "trackrecord",
+  "author": {
+    "name": "Scott Strubberg",
+    "email": "sstrubberg@gmail.com"
+  },
+  "actions": [
+    {
+      "id": "trackrecord.tagcharts",
+      "name": "Tag Charts",
+      "description": "Ports billboard-tag's existing review/apply flow: reviews fuzzy chart matches and merges exact matches in one pass. Never removes a tag.",
+      "config": {
+        "permissions": {
+          "track": {
+            "read": ["all"],
+            "modify": ["all"],
+            "modifyFields": ["tags"]
+          },
+          "files": {
+            "read": true,
+            "list": true,
+            "write": true
+          }
+        }
+      }
+    },
+    {
+      "id": "trackrecord.taggenres",
+      "name": "Tag Genres + Subgenres",
+      "description": "Reviews genre/subgenre candidates gathered from MusicBrainz, Discogs, LLM web search, and the local audio model, each with source attribution and confidence. Merges approved tags; never removes or overwrites existing ones.",
+      "config": {
+        "permissions": {
+          "track": {
+            "read": ["all"],
+            "modify": ["all"],
+            "modifyFields": ["tags"]
+          },
+          "files": {
+            "read": true,
+            "list": true,
+            "write": true
+          }
+        }
+      }
+    }
+  ]
+}
