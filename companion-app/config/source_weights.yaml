@@ -23,3 +23,15 @@ auto_include:
 # Tags below this confidence still surface in review, just visually
 # flagged and unchecked by default (same as every other non-auto tag).
 low_confidence_threshold: 0.35
+
+# A fetch source will sometimes suggest a tag that doesn't exist in your
+# Lexicon library at all (e.g. "Beatdown"). Set this to a Lexicon Custom
+# Tag category name (you already have one called "Subgenre") to let
+# Track Record create the tag there, spelled exactly as the source gave
+# it - no renaming. Leave blank/unset to keep the old behavior: report
+# the tag, create nothing.
+#
+# Creating a tag is always a review-screen decision, never
+# auto-included, regardless of confidence - it's a bigger action than
+# adding an existing tag to a track.
+new_tag_category: ""

@@ -57,6 +57,31 @@ def resolve_tag_id(tag: str, by_label: dict) -> int | None:
     return None
 
 
+def fetch_categories() -> dict[str, int]:
+    """Return {category_label_lower: category_id}."""
+    payload = lexicon_get("/tags")
+    return {
+        c["label"].lower(): c["id"]
+        for c in payload.get("categories", [])
+        if c.get("label")
+    }
+
+
+def create_tag(label: str, category_id: int) -> int:
+    """POST /tag - creates a new Custom Tag in an existing category and
+    returns its id. Never call this to create a category; Lexicon has a
+    separate /tag-category endpoint this project deliberately doesn't
+    use (see NOTICE.md / README - never creates a category on the
+    user's behalf)."""
+    r = requests.post(
+        f"{LEXICON}/tag",
+        json={"categoryId": category_id, "label": label},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()["data"]["id"]
+
+
 def fetch_library() -> list[dict]:
     out, offset = [], 0
     while True:

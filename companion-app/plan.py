@@ -50,7 +50,7 @@ def fetch_candidates(track: dict) -> list[dict]:
     return candidates
 
 
-def plan_track(track: dict, by_label: dict, weights: dict) -> dict:
+def plan_track(track: dict, by_label: dict, weights: dict, new_tag_category_id: int | None) -> dict:
     candidates = fetch_candidates(track)
     scored = scoring.score_track(candidates, weights)
     current_tag_ids = set(track.get("tags") or [])
@@ -60,12 +60,28 @@ def plan_track(track: dict, by_label: dict, weights: dict) -> dict:
     min_sources = auto_cfg.get("min_agreeing_sources", 99)
     low_conf_threshold = weights.get("low_confidence_threshold", 0)
 
-    auto, review, unresolved = [], [], []
+    auto, review, create, unresolved = [], [], [], []
     for entry in scored:
         tag_id = lexicon_client.resolve_tag_id(entry["tag"], by_label)
+
         if tag_id is None:
-            unresolved.append(entry)
+            # Doesn't exist in this Lexicon library at all. Creating a
+            # tag is always a review-screen decision, never auto -
+            # bigger action than adding an existing tag to a track.
+            if new_tag_category_id is None:
+                unresolved.append(entry)
+            else:
+                create.append({
+                    "track_id": track["id"],
+                    "artist": track.get("artist"),
+                    "title": track.get("title"),
+                    "tag": entry["tag"],
+                    "category_id": new_tag_category_id,
+                    "confidence": round(entry["confidence"], 3),
+                    "sources": entry["sources"],
+                })
             continue
+
         if tag_id in current_tag_ids:
             continue  # already tagged - nothing to do
 
@@ -86,7 +102,7 @@ def plan_track(track: dict, by_label: dict, weights: dict) -> dict:
             row["low_confidence"] = entry["confidence"] < low_conf_threshold
             review.append(row)
 
-    return {"auto": auto, "review": review, "unresolved": unresolved}
+    return {"auto": auto, "review": review, "create": create, "unresolved": unresolved}
 
 
 def main():
@@ -102,6 +118,18 @@ def main():
     by_id, by_label = lexicon_client.fetch_tag_index()
     print(f"  {len(by_id)} tags in Lexicon")
 
+    new_tag_category_id = None
+    new_tag_category_name = (weights.get("new_tag_category") or "").strip()
+    if new_tag_category_name:
+        categories = lexicon_client.fetch_categories()
+        new_tag_category_id = categories.get(new_tag_category_name.lower())
+        if new_tag_category_id is None:
+            print(
+                f"  warning: new_tag_category '{new_tag_category_name}' not found "
+                f"in Lexicon - unresolved tags will just be reported, same as if "
+                f"it were unset"
+            )
+
     print("reading library...")
     tracks = lexicon_client.fetch_library()
     print(f"  {len(tracks)} tracks")
@@ -112,18 +140,21 @@ def main():
         tracks = tracks[: args.limit]
 
     print(f"\nplanning {len(tracks)} track(s)...\n")
-    auto_all, review_all, unresolved_all = [], [], []
+    auto_all, review_all, create_all, unresolved_all = [], [], [], []
     for i, track in enumerate(tracks, 1):
         print(f"[{i}/{len(tracks)}] {track.get('artist')} - {track.get('title')}")
-        result = plan_track(track, by_label, weights)
+        result = plan_track(track, by_label, weights, new_tag_category_id)
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
+        create_all.extend(result["create"])
         unresolved_all.extend(result["unresolved"])
         for row in result["auto"]:
             print(f"    AUTO    {row['tag']}  ({row['confidence']:.0%})")
         for row in result["review"]:
             flag = " [low confidence]" if row["low_confidence"] else ""
             print(f"    REVIEW  {row['tag']}  ({row['confidence']:.0%}){flag}")
+        for row in result["create"]:
+            print(f"    CREATE  {row['tag']}  ({row['confidence']:.0%}) - new tag, needs review")
 
     out_path = Path(args.out) if args.out else PLAN_FILE
     out_path.write_text(
@@ -133,12 +164,16 @@ def main():
                 "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "auto": auto_all,
                 "review": review_all,
+                "create": create_all,
             },
             indent=1,
         )
     )
 
-    print(f"\n{len(auto_all)} auto-include, {len(review_all)} need review")
+    print(
+        f"\n{len(auto_all)} auto-include, {len(review_all)} need review, "
+        f"{len(create_all)} propose creating a new tag (also review-only)"
+    )
     print(f"plan -> {out_path}")
 
     unresolved_tags = sorted({e["tag"] for e in unresolved_all})
