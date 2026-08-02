@@ -12,6 +12,10 @@ Layout:
 - Tracks grouped in expandable sections.
 - Per candidate row: checkbox (default unchecked) + tag name +
   confidence bar/percentage - nothing else inline.
+- A "create" row also gets a category picker, defaulting to
+  new_tag_category from source_weights.yaml if plan.py could resolve
+  one, but always changeable here - category choice is a review-time
+  decision, not something you have to predict before running plan.py.
 - Source, per-source note, and links live behind a `⋮` overflow menu.
 - "Save Decisions" commits every checked row via apply.apply_decisions().
 """
@@ -24,6 +28,7 @@ from pathlib import Path
 from nicegui import run, ui
 
 import apply
+import lexicon_client
 
 PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 
@@ -51,7 +56,12 @@ def group_by_track(review_rows: list[dict], create_rows: list[dict]) -> dict:
 
 def build_ui(plan: dict) -> None:
     tracks = group_by_track(plan.get("review", []), plan.get("create", []))
-    checkboxes: list[tuple[dict, ui.checkbox]] = []
+    categories = lexicon_client.fetch_categories()
+    category_options = {c["id"]: c["label"] for c in categories}
+
+    # (row, checkbox, category_select_or_None) - the select is only
+    # present for "create" rows.
+    entries: list[tuple[dict, ui.checkbox, ui.select | None]] = []
 
     ui.label("Track Record — Genre/Subgenre Review").classes("text-xl font-bold")
     ui.label(f"{len(tracks)} track(s) need a decision").classes("text-gray-500")
@@ -62,10 +72,17 @@ def build_ui(plan: dict) -> None:
             for row in rows:
                 with ui.row().classes("items-center w-full gap-2 py-1"):
                     cb = ui.checkbox(value=False)
-                    checkboxes.append((row, cb))
 
                     label = row["tag"] + ("  (new tag)" if row["is_new"] else "")
                     ui.label(label).classes("flex-grow")
+
+                    select = None
+                    if row["is_new"]:
+                        select = ui.select(
+                            category_options,
+                            value=row.get("suggested_category_id"),
+                            label="category",
+                        ).classes("w-40")
 
                     ui.linear_progress(value=row["confidence"], show_value=False).classes("w-24")
                     ui.label(f"{row['confidence']:.0%}").classes("w-12 text-right")
@@ -81,14 +98,33 @@ def build_ui(plan: dict) -> None:
                                 if src.get("url"):
                                     item.on("click", lambda url=src["url"]: ui.navigate.to(url, new_tab=True))
 
+                    entries.append((row, cb, select))
+
     async def save():
-        approved_review = [r for r, cb in checkboxes if cb.value and not r["is_new"]]
-        approved_create = [r for r, cb in checkboxes if cb.value and r["is_new"]]
+        approved_review = [r for r, cb, _ in entries if cb.value and not r["is_new"]]
+        approved_create = []
+        skipped_no_category = 0
+        for r, cb, select in entries:
+            if not cb.value or not r["is_new"]:
+                continue
+            category_id = select.value if select else None
+            if category_id is None:
+                skipped_no_category += 1
+                continue
+            approved_create.append({**r, "category_id": category_id})
+
         if not approved_review and not approved_create:
-            ui.notify("Nothing checked - nothing to save", type="warning")
+            msg = "Nothing checked - nothing to save"
+            if skipped_no_category:
+                msg = f"{skipped_no_category} new-tag row(s) checked but no category chosen - pick one first"
+            ui.notify(msg, type="warning")
             return
+
         n = await run.io_bound(apply.apply_decisions, approved_review, approved_create)
-        ui.notify(f"Applied {n} track(s)", type="positive")
+        msg = f"Applied {n} track(s)"
+        if skipped_no_category:
+            msg += f" - skipped {skipped_no_category} new-tag row(s) with no category chosen"
+        ui.notify(msg, type="positive")
 
     ui.button("Save Decisions", on_click=save).props("color=primary").classes("mt-4")
 

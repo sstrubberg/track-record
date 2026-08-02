@@ -57,14 +57,15 @@ def resolve_tag_id(tag: str, by_label: dict) -> int | None:
     return None
 
 
-def fetch_categories() -> dict[str, int]:
-    """Return {category_label_lower: category_id}."""
+def fetch_categories() -> list[dict]:
+    """Return every Custom Tag category as [{"id": int, "label": str}, ...],
+    original casing preserved (for display in a picker)."""
     payload = lexicon_get("/tags")
-    return {
-        c["label"].lower(): c["id"]
+    return [
+        {"id": c["id"], "label": c["label"]}
         for c in payload.get("categories", [])
         if c.get("label")
-    }
+    ]
 
 
 def create_tag(label: str, category_id: int) -> int:
