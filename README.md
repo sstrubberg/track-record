@@ -122,6 +122,19 @@ explicit goal.
 - **Load → fetch → score/plan**: implemented (`plan.py`), tested
   end-to-end against a real library over the Lexicon Local API -
   reads tags/tracks, resolves candidate tags against what already
-  exists (never proposes creating a tag), and writes a plan of
-  auto-include vs. needs-review rows.
-- **Review UI, apply**: still stubs. Next up.
+  exists, and writes a plan of auto-include / needs-review / propose-
+  creating-a-new-tag rows. New-tag creation is opt-in
+  (`new_tag_category` in `source_weights.yaml`, blank by default) and
+  always review-gated, never auto-included.
+- **Review UI**: implemented (`review_ui.py`, NiceGUI native window) -
+  tracks grouped in expandable sections, checkbox + tag + confidence
+  bar per row, low-confidence flag, source/note/links behind an
+  overflow menu, "Save Decisions" button.
+- **Apply**: implemented (`apply.py`) - applies the plan's auto rows
+  immediately; review_ui.py calls into it for whatever a DJ checks.
+  Merge-never-replace, same rule as `billboard_tag.py`.
+
+The full Genre/Subgenre pipeline (fetch → score → plan → review →
+apply) exists end-to-end and has been exercised against a real Lexicon
+library. `llm_web_search.py` remains a stub, on hold over web search
+API cost for a full library pass.
