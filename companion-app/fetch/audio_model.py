@@ -15,10 +15,18 @@ not committed to this repo.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from urllib.request import urlretrieve
 
 import numpy as np
+
+# Must be set before TensorFlow's C++ side initializes (transitively, via
+# essentia.standard below) - otherwise it ignores this and logs anyway.
+# Silences noisy but harmless startup chatter ("MLIR V1 optimization pass
+# is not enabled", absl init warnings) that otherwise looks like an error
+# on every run.
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "models" / "discogs-maest"
 WEIGHTS_URL = "https://essentia.upf.edu/models/feature-extractors/maest/discogs-maest-30s-pw-2.pb"
@@ -64,7 +72,15 @@ def _load_classes() -> list[str]:
 def _load_model():
     global _model
     if _model is None:
+        import essentia
         import essentia.standard as es
+
+        # Essentia logs "No network created, or last created network has
+        # been deleted..." as a WARNING on every patch of every track -
+        # harmless (it's describing normal first-use setup, not an error),
+        # but at dozens of lines per track it reads as a hang or a crash.
+        essentia.log.warningActive = False
+        essentia.log.infoActive = False
 
         _ensure_model()
         _model = es.TensorflowPredictMAEST(
