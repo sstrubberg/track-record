@@ -5,10 +5,14 @@ nicegui[native]
 pyyaml
 
 # fetch/musicbrainz.py, fetch/discogs.py
-requests
+requests>=2.31
 
 # fetch/audio_model.py - discogs-maest inference
 essentia-tensorflow
 
 # fetch/llm_web_search.py
 anthropic
+
+# charts/billboard_tag.py (ported as-is from billboard-tag)
+rapidfuzz>=3.6
+billboard.py>=7.0
