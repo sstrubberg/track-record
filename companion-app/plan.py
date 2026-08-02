@@ -79,6 +79,7 @@ def plan_track(track: dict, by_label: dict, weights: dict, new_tag_category_id: 
                     "category_id": new_tag_category_id,
                     "confidence": round(entry["confidence"], 3),
                     "sources": entry["sources"],
+                    "low_confidence": entry["confidence"] < low_conf_threshold,
                 })
             continue
 
