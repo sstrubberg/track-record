@@ -22,6 +22,27 @@ never gets committed:
 | `DISCOGS_TOKEN`   | `fetch/discogs.py`      | https://www.discogs.com/settings/developers (personal access token) |
 | `ANTHROPIC_API_KEY` | `fetch/llm_web_search.py` (not yet built) | https://console.anthropic.com/ |
 
+## Genre/Subgenre action
+
+```
+python review_ui.py
+```
+
+Opens the whole workflow in one native window: click "Generate Plan"
+(optionally capping it to the first N tracks while you're trying it
+out), watch the live per-track progress, then check the tags you agree
+with and hit "Save Decisions". Nothing else needs the terminal.
+
+If you'd rather drive it from scripts (e.g. a cron job that generates
+a plan overnight for review in the morning), `plan.py` and `apply.py`
+are still plain CLIs:
+
+```
+python plan.py --limit 20   # try it on the first 20 tracks
+python plan.py               # the whole library
+python apply.py              # applies the plan's auto-include rows immediately
+```
+
 ## Trying a fetch source directly
 
 Each module under `fetch/` is runnable on its own for a quick check
