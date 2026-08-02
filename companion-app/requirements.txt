@@ -10,6 +10,7 @@ requests>=2.31
 
 # fetch/audio_model.py - discogs-maest inference
 essentia-tensorflow
+numpy
 
 # fetch/llm_web_search.py
 anthropic

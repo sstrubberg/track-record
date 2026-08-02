@@ -30,4 +30,10 @@ against a real track, before any scoring/review/apply is wired up:
 ```
 python fetch/musicbrainz.py "Frankie Knuckles" "Your Love"
 python fetch/discogs.py "Frankie Knuckles" "Your Love"
+python fetch/audio_model.py "/path/to/track.wav"
 ```
+
+`audio_model.py` downloads the discogs-maest model weights (~330 MB,
+CC BY-NC-SA 4.0, see [NOTICE.md](../NOTICE.md)) into `models/` on first
+use - gitignored, not part of this repo. The audio file needs to be at
+least ~30 seconds long; shorter clips raise `input signal is too short`.

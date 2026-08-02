@@ -106,7 +106,7 @@ Lexicon; never creates a new category on the user's behalf.
 
 AGPL-3.0 (see [LICENSE](LICENSE)), required once the companion app
 links against Essentia. See [NOTICE.md](NOTICE.md) for third-party
-model attribution (MTG/Essentia pretrained weights, CC BY-NC-ND 4.0).
+model attribution (MTG/Essentia pretrained weights, CC BY-NC-SA 4.0).
 
 No monetization planned - free/open distribution to other DJs is the
 explicit goal.

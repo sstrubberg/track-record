@@ -17,5 +17,8 @@ companion-app/**/*_cache.json
 companion-app/**/*_plan.csv
 logs/
 
+# Downloaded model weights (~330 MB) - fetched on first use, not committed
+companion-app/models/
+
 # macOS
 .DS_Store
