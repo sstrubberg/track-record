@@ -7,11 +7,13 @@ save decisions - so nothing needs the terminal except launching this
 one file.
 
 Layout:
-- "Generate Plan" (with an optional tracks-to-scan limit) runs the
-  whole load -> fetch -> score pipeline in-process via plan.py's
-  generate_plan(), with a live per-track progress bar - a full-library
-  run takes several minutes (rate-limited API calls + audio inference
-  per track), so this has to show it's working, not just freeze.
+- "Generate Plan" runs the whole load -> fetch -> score pipeline
+  in-process via plan.py's generate_plan(), with a live per-track
+  progress bar - a full-library run takes several minutes (rate-limited
+  API calls + audio inference per track), so this has to show it's
+  working, not just freeze. A scan-mode picker chooses which tracks:
+  the whole library (optionally capped by count), the N most recently
+  added, or everything in Lexicon's Incoming bin.
 - Tracks grouped in expandable sections. Per candidate row: checkbox
   (default unchecked) + tag name + confidence bar/percentage.
 - A "create" row (tag doesn't exist yet) also gets a category picker,
@@ -63,9 +65,23 @@ def build_ui() -> None:
 
     ui.label("Track Record — Genre/Subgenre Review").classes("text-xl font-bold")
 
+    scan_mode_hints = {
+        "all": "Leave count blank to scan the whole library.",
+        "recent": f"Scans the N most recently added tracks (blank = {plan_module.DEFAULT_RECENT_COUNT}).",
+        "incoming": "Scans everything in your Incoming bin; set a count to cap it.",
+    }
+
     with ui.row().classes("items-center gap-2"):
-        limit_input = ui.number(label="tracks to scan (blank = whole library)", min=1).classes("w-64")
+        scan_mode_select = ui.select(
+            {"all": "Whole library", "recent": "Most recently added", "incoming": "Incoming"},
+            value="all",
+            label="scan",
+        ).classes("w-48")
+        limit_input = ui.number(label="count (optional)", min=1).classes("w-40")
         generate_button = ui.button("Generate Plan")
+
+    scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
+    scan_mode_select.on_value_change(lambda e: scan_mode_hint.set_text(scan_mode_hints[e.value]))
 
     progress_label = ui.label("").classes("text-gray-500")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
@@ -208,6 +224,7 @@ def build_ui() -> None:
             new_plan = await run.io_bound(
                 plan_module.generate_plan,
                 limit=limit,
+                scan_mode=scan_mode_select.value,
                 on_track_planned=on_track_planned,
             )
         except Exception as e:

@@ -122,9 +122,14 @@ def _resolve_suggested_category(weights: dict, on_status=None) -> int | None:
     return match["id"] if match else None
 
 
+SCAN_MODES = ("all", "recent", "incoming")
+DEFAULT_RECENT_COUNT = 20
+
+
 def generate_plan(
     limit: int | None = None,
     track_id: int | None = None,
+    scan_mode: str = "all",
     out_path: str | Path | None = None,
     on_status=None,
     on_track_planned=None,
@@ -134,11 +139,19 @@ def generate_plan(
     review_ui.py's "Generate Plan" button - one implementation either
     way calls into.
 
+    scan_mode picks which tracks: "all" (default, whole library,
+    optionally capped by `limit`), "recent" (the `limit` most recently
+    added tracks, defaulting to DEFAULT_RECENT_COUNT), or "incoming"
+    (everything in Lexicon's Incoming bin, optionally capped).
+
     on_status(message), if given, is called for one-off progress lines
     (tag index size, library size, ...). on_track_planned(i, total,
     track, result), if given, is called once per track, after it's been
     planned - result is plan_track()'s return value for that track.
     """
+    if scan_mode not in SCAN_MODES:
+        raise ValueError(f"scan_mode must be one of {SCAN_MODES}, got {scan_mode!r}")
+
     def status(msg):
         if on_status:
             on_status(msg)
@@ -152,8 +165,18 @@ def generate_plan(
     suggested_category_id = _resolve_suggested_category(weights, on_status)
 
     status("reading library...")
-    tracks = lexicon_client.fetch_library()
-    status(f"  {len(tracks)} tracks")
+    if scan_mode == "recent":
+        tracks = lexicon_client.fetch_library(
+            sort=[{"field": "dateAdded", "dir": "desc"}],
+            limit=limit or DEFAULT_RECENT_COUNT,
+        )
+        status(f"  {len(tracks)} most recently added track(s)")
+    elif scan_mode == "incoming":
+        tracks = lexicon_client.fetch_library(source="incoming")
+        status(f"  {len(tracks)} incoming track(s)")
+    else:
+        tracks = lexicon_client.fetch_library()
+        status(f"  {len(tracks)} tracks")
 
     if track_id is not None:
         tracks = [t for t in tracks if t["id"] == track_id]
@@ -193,6 +216,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=None, help="only plan the first N tracks")
     p.add_argument("--track-id", type=int, default=None, help="only plan this one track id")
+    p.add_argument(
+        "--mode", choices=SCAN_MODES, default="all",
+        help="'recent' = --limit most recently added tracks (default 20); "
+             "'incoming' = everything in Lexicon's Incoming bin",
+    )
     p.add_argument("--out", default=None, help="alternate plan output path")
     args = p.parse_args()
 
@@ -209,6 +237,7 @@ def main():
     generate_plan(
         limit=args.limit,
         track_id=args.track_id,
+        scan_mode=args.mode,
         out_path=args.out,
         on_status=print,
         on_track_planned=on_track_planned,

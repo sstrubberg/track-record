@@ -17,8 +17,11 @@ import requests
 LEXICON = os.environ.get("LEXICON_URL", "http://localhost:48624/v1")
 
 
-def lexicon_get(path: str, **params):
-    r = requests.get(f"{LEXICON}{path}", params=params, timeout=60)
+def lexicon_get(path: str, json_body: dict | None = None, **params):
+    """`json_body` is for parameters the query-string can't express
+    cleanly (e.g. `sort`, an array of {field, dir} objects) - Lexicon's
+    docs confirm query params also work as a JSON body on GET."""
+    r = requests.get(f"{LEXICON}{path}", params=params, json=json_body, timeout=60)
     r.raise_for_status()
     body = r.json()
     return body.get("data", body)
@@ -83,10 +86,31 @@ def create_tag(label: str, category_id: int) -> int:
     return r.json()["data"]["id"]
 
 
-def fetch_library() -> list[dict]:
+def fetch_library(
+    source: str | None = None,
+    sort: list[dict] | None = None,
+    limit: int | None = None,
+) -> list[dict]:
+    """Fetch tracks. With no arguments, pages through the whole library
+    at Lexicon's own default source ("non-archived"), database order -
+    same as always.
+
+    Pass `limit` for a single capped fetch instead of paginating - e.g.
+    combined with `sort=[{"field": "dateAdded", "dir": "desc"}]` for
+    "the N most recently added tracks". `source` selects which pool:
+    "incoming" for just the Incoming bin, "all" for archived and
+    non-archived together, "archived", or omit for the default.
+    """
+    query = {"source": source} if source is not None else {}
+    body = {"sort": sort} if sort else None
+
+    if limit is not None:
+        page = lexicon_get("/tracks", json_body=body, limit=limit, offset=0, **query)
+        return page.get("tracks", []) if isinstance(page, dict) else page
+
     out, offset = [], 0
     while True:
-        page = lexicon_get("/tracks", limit=1000, offset=offset)
+        page = lexicon_get("/tracks", json_body=body, limit=1000, offset=offset, **query)
         rows = page.get("tracks", []) if isinstance(page, dict) else page
         if not rows:
             break
