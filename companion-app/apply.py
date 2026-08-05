@@ -73,19 +73,22 @@ def _merge_rows(rows: list[dict], live_tags: dict[int, list[int]]) -> list[dict]
     return entries
 
 
-def apply_auto(plan: dict) -> int:
-    """Apply every row in plan['auto'] immediately. Returns how many
-    tracks were actually changed."""
+def apply_auto(plan: dict) -> list[dict]:
+    """Apply every row in plan['auto'] immediately. Returns the log
+    entries for whatever was actually written - each one names the
+    track and exactly which tags landed on it, since "auto" means no
+    review screen ever shows this, and the caller (review_ui.py, or
+    the __main__ block below) needs something to display in its place."""
     rows = plan.get("auto", [])
     if not rows:
-        return 0
+        return []
     live_tags = {t["id"]: list(t.get("tags") or []) for t in lexicon_client.fetch_library()}
     entries = _merge_rows(rows, live_tags)
     if entries:
         log = _load_log()
         log.extend(entries)
         _save_log(log)
-    return len(entries)
+    return entries
 
 
 def apply_decisions(approved_review: list[dict], approved_create: list[dict]) -> int:
@@ -124,8 +127,10 @@ def main():
         raise SystemExit(f"no {plan_path} - run plan.py first")
     plan = json.loads(plan_path.read_text())
 
-    n = apply_auto(plan)
-    print(f"applied {n} track(s) from the auto bucket")
+    entries = apply_auto(plan)
+    print(f"applied {len(entries)} track(s) from the auto bucket")
+    for e in entries:
+        print(f"  {e['artist']} - {e['title']}: {', '.join(e['tags_added'])}")
     print(
         f"{len(plan.get('review', []))} review row(s) and "
         f"{len(plan.get('create', []))} create row(s) still need review_ui.py"

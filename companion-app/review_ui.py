@@ -17,6 +17,13 @@ Layout:
   in progress - takes effect after the current track finishes (can't
   safely interrupt mid-network-call or mid-inference), and keeps
   whatever was already planned as a normal, smaller plan.
+- Rows clearing the auto-include confidence bar skip the review
+  screen by design - but they still need to actually reach Lexicon,
+  and the DJ still needs to see what was written on their behalf. So
+  right after a plan finishes generating, its "auto" rows are applied
+  immediately via apply.apply_auto(), and the exact tag names written
+  per track are listed in an "Auto-applied" section (collapsed by
+  default, since a full-library run can auto-apply a lot).
 - Tracks grouped in expandable sections. Per candidate row: checkbox
   (default unchecked) + tag name + confidence bar/percentage.
 - A "create" row (tag doesn't exist yet) also gets a category picker,
@@ -129,6 +136,21 @@ def build_ui() -> None:
             render_preview(progress["result"])
 
     ui.timer(0.3, update_progress)
+
+    @ui.refreshable
+    def auto_applied_section(entries: list[dict] | None = None) -> None:
+        entries = entries or []
+        if not entries:
+            return
+        total_tags = sum(len(e["tags_added"]) for e in entries)
+        with ui.expansion(
+            f"Auto-applied: {total_tags} tag(s) across {len(entries)} track(s)",
+            icon="check_circle",
+        ).classes("w-full text-green-600"):
+            for e in sorted(entries, key=lambda e: ((e.get("artist") or ""), e.get("title") or "")):
+                ui.label(f"{e['artist']} — {e['title']}: {', '.join(e['tags_added'])}").classes("text-sm")
+
+    auto_applied_section()
 
     @ui.refreshable
     def review_section() -> None:
@@ -249,10 +271,21 @@ def build_ui() -> None:
 
         state["plan"] = new_plan
         review_section.refresh()
+
+        applied_entries = []
+        if new_plan.get("auto"):
+            progress_label.text = "applying auto-include tags..."
+            try:
+                applied_entries = await run.io_bound(apply.apply_auto, new_plan)
+            except Exception as e:
+                ui.notify(f"Auto-apply failed: {e}", type="negative")
+        auto_applied_section.refresh(applied_entries)
+
+        applied_tag_count = sum(len(e["tags_added"]) for e in applied_entries)
         stopped = new_plan.get("stopped_early", False)
         ui.notify(
             f"{'Stopped early' if stopped else 'Plan ready'}: "
-            f"{len(new_plan['auto'])} auto-include, "
+            f"{applied_tag_count} tag(s) auto-applied, "
             f"{len(new_plan['review'])} need review, "
             f"{len(new_plan['create'])} propose a new tag",
             type="warning" if stopped else "positive",
