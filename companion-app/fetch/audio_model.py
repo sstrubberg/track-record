@@ -114,12 +114,27 @@ def fetch_genres(audio_path: str) -> list[dict]:
         if prob < MIN_PROBABILITY:
             continue
         genre, _, style = cls.partition("---")
+        note = f"discogs-maest: {genre} — {style} ({prob:.0%})"
+        # Each class is a Genre---Style pair; emit both halves as their
+        # own candidate tags, not just style. Multiple styles sharing a
+        # genre (e.g. "Hip Hop---RnB/Swing" and "Hip Hop---Pop Rap" both
+        # clearing MIN_PROBABILITY) naturally produce multiple "Hip Hop"
+        # candidates here - scoring.py's group_by_tag already combines
+        # same-tag candidates via noisy-OR, same as it does across
+        # sources, so this doesn't need its own aggregation step.
         candidates.append({
             "tag": style,
             "score": float(prob),
             "source": "audio_model",
             "url": None,
-            "note": f"discogs-maest: {genre} — {style} ({prob:.0%})",
+            "note": note,
+        })
+        candidates.append({
+            "tag": genre,
+            "score": float(prob),
+            "source": "audio_model",
+            "url": None,
+            "note": note,
         })
     return sorted(candidates, key=lambda c: c["score"], reverse=True)
 
