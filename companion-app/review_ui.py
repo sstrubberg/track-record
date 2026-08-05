@@ -13,7 +13,10 @@ Layout:
   API calls + audio inference per track), so this has to show it's
   working, not just freeze. A scan-mode picker chooses which tracks:
   the whole library (optionally capped by count), the N most recently
-  added, or everything in Lexicon's Incoming bin.
+  added, or everything in Lexicon's Incoming bin. "Stop" aborts a run
+  in progress - takes effect after the current track finishes (can't
+  safely interrupt mid-network-call or mid-inference), and keeps
+  whatever was already planned as a normal, smaller plan.
 - Tracks grouped in expandable sections. Per candidate row: checkbox
   (default unchecked) + tag name + confidence bar/percentage.
 - A "create" row (tag doesn't exist yet) also gets a category picker,
@@ -27,6 +30,7 @@ Layout:
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from nicegui import run, ui
@@ -61,7 +65,8 @@ def group_by_track(review_rows: list[dict], create_rows: list[dict]) -> dict:
 
 def build_ui() -> None:
     state = {"plan": load_plan(PLAN_FILE)}
-    progress = {"current": 0, "total": 0, "artist": "", "title": "", "result": None, "rendered": -1}
+    progress = {"current": 0, "total": 0, "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
+    stop_event = threading.Event()
 
     ui.label("Track Record — Genre/Subgenre Review").classes("text-xl font-bold")
 
@@ -79,6 +84,8 @@ def build_ui() -> None:
         ).classes("w-48")
         limit_input = ui.number(label="count (optional)", min=1).classes("w-40")
         generate_button = ui.button("Generate Plan")
+        stop_button = ui.button("Stop", icon="stop", color="negative")
+        stop_button.visible = False
 
     scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
     scan_mode_select.on_value_change(lambda e: scan_mode_hint.set_text(scan_mode_hints[e.value]))
@@ -111,7 +118,8 @@ def build_ui() -> None:
     def update_progress() -> None:
         if not progress["total"]:
             return
-        progress_label.text = f"[{progress['current']}/{progress['total']}] {progress['artist']} — {progress['title']}"
+        suffix = "  (stopping after this track...)" if progress["stopping"] else ""
+        progress_label.text = f"[{progress['current']}/{progress['total']}] {progress['artist']} — {progress['title']}{suffix}"
         progress_bar.value = progress["current"] / progress["total"]
         # Only redraw the preview when a new track's result has actually
         # arrived - not every timer tick - so it reads as "this track's
@@ -205,9 +213,12 @@ def build_ui() -> None:
     review_section()
 
     async def generate():
+        stop_event.clear()
         generate_button.disable()
+        stop_button.visible = True
+        stop_button.enable()
         progress_bar.visible = True
-        progress.update(current=0, total=0, artist="", title="", result=None, rendered=-1)
+        progress.update(current=0, total=0, artist="", title="", result=None, rendered=-1, stopping=False)
         preview_container.clear()
         progress_label.text = "starting..."
 
@@ -226,24 +237,34 @@ def build_ui() -> None:
                 limit=limit,
                 scan_mode=scan_mode_select.value,
                 on_track_planned=on_track_planned,
+                should_stop=stop_event.is_set,
             )
         except Exception as e:
             ui.notify(f"Plan generation failed: {e}", type="negative")
             return
         finally:
             progress_bar.visible = False
+            stop_button.visible = False
             generate_button.enable()
 
         state["plan"] = new_plan
         review_section.refresh()
+        stopped = new_plan.get("stopped_early", False)
         ui.notify(
-            f"Plan ready: {len(new_plan['auto'])} auto-include, "
+            f"{'Stopped early' if stopped else 'Plan ready'}: "
+            f"{len(new_plan['auto'])} auto-include, "
             f"{len(new_plan['review'])} need review, "
             f"{len(new_plan['create'])} propose a new tag",
-            type="positive",
+            type="warning" if stopped else "positive",
         )
 
+    def request_stop():
+        stop_event.set()
+        progress["stopping"] = True
+        stop_button.disable()
+
     generate_button.on_click(generate)
+    stop_button.on_click(request_stop)
 
 
 def main():

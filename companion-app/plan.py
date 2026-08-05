@@ -133,6 +133,7 @@ def generate_plan(
     out_path: str | Path | None = None,
     on_status=None,
     on_track_planned=None,
+    should_stop=None,
 ) -> dict:
     """Runs the whole load -> fetch -> score pipeline in-process and
     writes the plan to disk. Used by both the CLI below and
@@ -148,6 +149,13 @@ def generate_plan(
     (tag index size, library size, ...). on_track_planned(i, total,
     track, result), if given, is called once per track, after it's been
     planned - result is plan_track()'s return value for that track.
+
+    should_stop(), if given, is checked before starting each track. A
+    fetch already in flight for the current track (a network call, or
+    audio-model inference) isn't interrupted mid-call - stopping takes
+    effect after that track finishes, not instantly. Whatever was
+    already planned is still written out and returned as a normal,
+    smaller plan rather than discarded.
     """
     if scan_mode not in SCAN_MODES:
         raise ValueError(f"scan_mode must be one of {SCAN_MODES}, got {scan_mode!r}")
@@ -185,7 +193,12 @@ def generate_plan(
 
     status(f"\nplanning {len(tracks)} track(s)...\n")
     auto_all, review_all, create_all = [], [], []
+    stopped = False
     for i, track in enumerate(tracks, 1):
+        if should_stop and should_stop():
+            stopped = True
+            status(f"\nstopped after {i - 1}/{len(tracks)} track(s)")
+            break
         result = plan_track(track, by_label, weights, suggested_category_id)
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
@@ -196,6 +209,7 @@ def generate_plan(
     plan = {
         "version": 1,
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "stopped_early": stopped,
         "auto": auto_all,
         "review": review_all,
         "create": create_all,
