@@ -26,6 +26,15 @@ BASE = "https://api.discogs.com"
 USER_AGENT = "TrackRecord/0.1 +https://github.com/sstrubberg/track-record"
 REQUEST_DELAY = 1.0  # stays well under Discogs' authenticated 60 req/min limit
 
+# A release's `format` array can include these. Both mean its genre/style
+# describes a whole various-songs release, not the one track we asked
+# about - a bootleg comp of 20 unrelated hits tagged "Pop Rap" doesn't
+# make the one Gwen Stefani song on it Pop Rap. "unofficial release" is
+# Discogs' own label for pirate/bootleg pressings; confirmed against a
+# real bad match (a Russian bootleg comp crediting "Hollaback Girl"'s
+# genre/style to the whole disc's mixed Beyonce/Gwen Stefani/Pink tracklist).
+UNRELIABLE_FORMATS = {"compilation", "unofficial release"}
+
 _session = requests.Session()
 _session.headers.update({"User-Agent": USER_AGENT})
 
@@ -51,6 +60,11 @@ def _token() -> str:
     return token
 
 
+def _is_reliable_release(result: dict) -> bool:
+    formats = {f.lower() for f in (result.get("format") or [])}
+    return formats.isdisjoint(UNRELIABLE_FORMATS)
+
+
 def fetch_genres(artist: str, title: str) -> list[dict]:
     """Return candidate genre/style tags for a track from Discogs.
 
@@ -70,10 +84,16 @@ def fetch_genres(artist: str, title: str) -> list[dict]:
     )
     r.raise_for_status()
     results = r.json().get("results", [])
-    if not results:
+
+    # Discogs pre-ranks by relevance, but "most relevant" still includes
+    # bootleg/various-artist compilations that happen to contain the
+    # track - skip those rather than trust a match whose genre/style
+    # describes dozens of other songs too. No reliable release found ->
+    # no candidates, not a guess.
+    best = next((r for r in results if _is_reliable_release(r)), None)
+    if best is None:
         return []
 
-    best = results[0]  # Discogs returns results pre-ranked by relevance
     url = f"https://www.discogs.com{best['uri']}" if best.get("uri") else None
     release_title = best.get("title", "")
 
