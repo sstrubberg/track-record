@@ -18,12 +18,15 @@ Layout:
   safely interrupt mid-network-call or mid-inference), and keeps
   whatever was already planned as a normal, smaller plan.
 - Rows clearing the auto-include confidence bar skip the review
-  screen by design - but they still need to actually reach Lexicon,
-  and the DJ still needs to see what was written on their behalf. So
-  right after a plan finishes generating, its "auto" rows are applied
-  immediately via apply.apply_auto(), and the exact tag names written
-  per track are listed in an "Auto-applied" section (collapsed by
-  default, since a full-library run can auto-apply a lot).
+  screen by design, but still need a DJ's sign-off before anything
+  actually gets written - a "Dry run" checkbox (on by default) keeps
+  "Generate Plan" a pure preview: the auto bucket is shown as pending,
+  nothing is written, until "Apply" is clicked deliberately. Turning
+  dry run off makes Generate Plan apply the auto bucket itself the
+  moment generation finishes, no extra click. Either way, the exact
+  tag names involved - written or still pending - are listed in an
+  "Auto-include" section (collapsed by default, since a full-library
+  run can involve a lot of tags), never applied silently.
 - Tracks grouped in expandable sections. Per candidate row: checkbox
   (default unchecked) + tag name + confidence bar/percentage.
 - A "create" row (tag doesn't exist yet) also gets a category picker,
@@ -97,6 +100,11 @@ def build_ui() -> None:
     scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
     scan_mode_select.on_value_change(lambda e: scan_mode_hint.set_text(scan_mode_hints[e.value]))
 
+    # On by default - nothing gets written to Lexicon on a Generate Plan
+    # run until this is unchecked, or the pending auto-include tags are
+    # applied by hand via the button in auto_section() below.
+    dry_run_checkbox = ui.checkbox("Dry run — don't write any tags", value=True)
+
     progress_label = ui.label("").classes("text-gray-500")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
     progress_bar.visible = False
@@ -137,20 +145,70 @@ def build_ui() -> None:
 
     ui.timer(0.3, update_progress)
 
-    @ui.refreshable
-    def auto_applied_section(entries: list[dict] | None = None) -> None:
-        entries = entries or []
-        if not entries:
-            return
-        total_tags = sum(len(e["tags_added"]) for e in entries)
-        with ui.expansion(
-            f"Auto-applied: {total_tags} tag(s) across {len(entries)} track(s)",
-            icon="check_circle",
-        ).classes("w-full text-green-600"):
-            for e in sorted(entries, key=lambda e: ((e.get("artist") or ""), e.get("title") or "")):
-                ui.label(f"{e['artist']} — {e['title']}: {', '.join(e['tags_added'])}").classes("text-sm")
+    def _group_auto_rows(rows: list[dict]) -> list[dict]:
+        by_track: dict[int, dict] = {}
+        for r in rows:
+            t = by_track.setdefault(r["track_id"], {"artist": r["artist"], "title": r["title"], "tags": []})
+            t["tags"].append(r["tag"])
+        return sorted(by_track.values(), key=lambda t: ((t["artist"] or ""), t["title"] or ""))
 
-    auto_applied_section()
+    async def apply_pending_auto() -> None:
+        plan = state["plan"]
+        rows = plan.get("auto") if plan else None
+        if not rows:
+            return
+        apply_auto_button.disable()
+        try:
+            entries = await run.io_bound(apply.apply_auto, {"auto": rows})
+        except Exception as e:
+            ui.notify(f"Auto-apply failed: {e}", type="negative")
+            apply_auto_button.enable()
+            return
+        plan["auto"] = []  # consumed - a re-render of this plan won't re-offer them
+        auto_section.refresh(rows=None, applied_entries=entries)
+        ui.notify(
+            f"Applied {sum(len(e['tags_added']) for e in entries)} tag(s) "
+            f"across {len(entries)} track(s)",
+            type="positive",
+        )
+
+    @ui.refreshable
+    def auto_section(rows: list[dict] | None = None, applied_entries: list[dict] | None = None) -> None:
+        """Exactly one of `rows` (dry-run - not yet written) or
+        `applied_entries` (already written, from apply.apply_auto's
+        return value) should be given - never both."""
+        nonlocal apply_auto_button
+
+        if applied_entries:
+            total_tags = sum(len(e["tags_added"]) for e in applied_entries)
+            with ui.expansion(
+                f"Auto-applied: {total_tags} tag(s) across {len(applied_entries)} track(s)",
+                icon="check_circle",
+            ).classes("w-full text-green-600"):
+                for e in sorted(applied_entries, key=lambda e: ((e.get("artist") or ""), e.get("title") or "")):
+                    ui.label(f"{e['artist']} — {e['title']}: {', '.join(e['tags_added'])}").classes("text-sm")
+            return
+
+        if rows:
+            grouped = _group_auto_rows(rows)
+            with ui.column().classes("w-full gap-1"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("visibility", color="grey")
+                    ui.label(
+                        f"Dry run — {len(rows)} tag(s) across {len(grouped)} track(s) "
+                        f"would auto-apply, nothing written yet"
+                    ).classes("text-gray-500")
+                    apply_auto_button = ui.button(
+                        "Apply now", on_click=apply_pending_auto
+                    ).props("outline dense color=primary")
+                with ui.expansion("Show pending tags", value=False).classes("w-full"):
+                    for t in grouped:
+                        ui.label(f"{t['artist']} — {t['title']}: {', '.join(t['tags'])}").classes(
+                            "text-sm text-gray-500"
+                        )
+
+    apply_auto_button = None
+    auto_section()
 
     @ui.refreshable
     def review_section() -> None:
@@ -242,6 +300,7 @@ def build_ui() -> None:
         progress_bar.visible = True
         progress.update(current=0, total=0, artist="", title="", result=None, rendered=-1, stopping=False)
         preview_container.clear()
+        auto_section.refresh(rows=None, applied_entries=None)
         progress_label.text = "starting..."
 
         def on_track_planned(i, total, track, result):
@@ -272,20 +331,24 @@ def build_ui() -> None:
         state["plan"] = new_plan
         review_section.refresh()
 
-        applied_entries = []
-        if new_plan.get("auto"):
-            progress_label.text = "applying auto-include tags..."
-            try:
-                applied_entries = await run.io_bound(apply.apply_auto, new_plan)
-            except Exception as e:
-                ui.notify(f"Auto-apply failed: {e}", type="negative")
-        auto_applied_section.refresh(applied_entries)
+        if dry_run_checkbox.value:
+            auto_rows = new_plan.get("auto") or []
+            auto_section.refresh(rows=auto_rows or None, applied_entries=None)
+            auto_desc = f"{len(auto_rows)} auto-include tag(s) pending (dry run - nothing written)"
+        else:
+            applied_entries = []
+            if new_plan.get("auto"):
+                progress_label.text = "applying auto-include tags..."
+                try:
+                    applied_entries = await run.io_bound(apply.apply_auto, new_plan)
+                except Exception as e:
+                    ui.notify(f"Auto-apply failed: {e}", type="negative")
+            auto_section.refresh(rows=None, applied_entries=applied_entries or None)
+            auto_desc = f"{sum(len(e['tags_added']) for e in applied_entries)} tag(s) auto-applied"
 
-        applied_tag_count = sum(len(e["tags_added"]) for e in applied_entries)
         stopped = new_plan.get("stopped_early", False)
         ui.notify(
-            f"{'Stopped early' if stopped else 'Plan ready'}: "
-            f"{applied_tag_count} tag(s) auto-applied, "
+            f"{'Stopped early' if stopped else 'Plan ready'}: {auto_desc}, "
             f"{len(new_plan['review'])} need review, "
             f"{len(new_plan['create'])} propose a new tag",
             type="warning" if stopped else "positive",
