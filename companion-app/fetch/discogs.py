@@ -14,6 +14,7 @@ so it's never committed and never needs to be pasted anywhere.
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 
@@ -25,6 +26,20 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 BASE = "https://api.discogs.com"
 USER_AGENT = "TrackRecord/0.1 +https://github.com/sstrubberg/track-record"
 REQUEST_DELAY = 1.0  # stays well under Discogs' authenticated 60 req/min limit
+
+# DJ libraries routinely suffix titles with edit/version notes that
+# aren't part of the actual release - "(Intro Clean)", "(CLEAN) (MM
+# Edit)", "(Dirty)". Discogs' search won't match through those (this is
+# what was actually keeping "Hollaback Girl (Intro Clean)" from finding
+# its real release at all, separate from the bootleg-filtering below).
+# Same problem billboard_tag.py's norm_title already solves for chart
+# matching; this is the live-search-API equivalent.
+_PAREN_SUFFIX = re.compile(r"\s*[\(\[][^)\]]*[)\]]")
+
+
+def _strip_edit_suffixes(title: str) -> str:
+    stripped = _PAREN_SUFFIX.sub("", title).strip()
+    return stripped or title
 
 # A release's `format` array can include these. Both mean its genre/style
 # describes a whole various-songs release, not the one track we asked
@@ -71,6 +86,14 @@ def fetch_genres(artist: str, title: str) -> list[dict]:
     Each candidate: {"tag": str, "score": 1.0, "source": "discogs",
     "url": str, "note": str}
     """
+    stripped_title = _strip_edit_suffixes(title)
+    candidates = _fetch_genres_for_title(artist, stripped_title)
+    if not candidates and stripped_title != title:
+        candidates = _fetch_genres_for_title(artist, title)
+    return candidates
+
+
+def _fetch_genres_for_title(artist: str, title: str) -> list[dict]:
     _throttle()
     r = _session.get(
         f"{BASE}/database/search",

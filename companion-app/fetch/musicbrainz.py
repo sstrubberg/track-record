@@ -16,6 +16,7 @@ clients to stay near 1 request/second.
 
 from __future__ import annotations
 
+import re
 import time
 
 import requests
@@ -24,6 +25,18 @@ BASE = "https://musicbrainz.org/ws/2"
 USER_AGENT = "TrackRecord/0.1 ( https://github.com/sstrubberg/track-record )"
 REQUEST_DELAY = 1.05
 MATCH_THRESHOLD = 90  # MusicBrainz's own search relevance score (0-100)
+
+# DJ libraries routinely suffix titles with edit/version notes that
+# aren't part of the actual release - "(Intro Clean)", "(CLEAN) (MM
+# Edit)", "(Dirty)". MusicBrainz's search won't match through those.
+# Same problem billboard_tag.py's norm_title already solves for chart
+# matching; this is the live-search-API equivalent.
+_PAREN_SUFFIX = re.compile(r"\s*[\(\[][^)\]]*[)\]]")
+
+
+def _strip_edit_suffixes(title: str) -> str:
+    stripped = _PAREN_SUFFIX.sub("", title).strip()
+    return stripped or title
 
 _session = requests.Session()
 _session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
@@ -81,6 +94,14 @@ def fetch_genres(artist: str, title: str) -> list[dict]:
     Each candidate: {"tag": str, "score": 1.0, "source": "musicbrainz",
     "url": str, "note": str}
     """
+    stripped_title = _strip_edit_suffixes(title)
+    candidates = _fetch_genres_for_title(artist, stripped_title)
+    if not candidates and stripped_title != title:
+        candidates = _fetch_genres_for_title(artist, title)
+    return candidates
+
+
+def _fetch_genres_for_title(artist: str, title: str) -> list[dict]:
     mbid, match_score = _search_recording(artist, title)
     if mbid is None:
         return []
