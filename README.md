@@ -48,7 +48,9 @@ track-record/
     │   ├── llm_web_search.py    # Claude/Gemini + web search, artist+title+genre in
     │   └── audio_model.py       # discogs-maest wrapper (Essentia)
     ├── scoring.py                # weighted noisy-OR, reads config/source_weights.yaml
-    ├── review_ui.py              # NiceGUI screens (native window)
+    ├── lexicon_client.py         # shared Local API client (tracks, tags, writes)
+    ├── plan.py                   # load -> fetch -> score, the pipeline itself
+    ├── review_ui.py              # NiceGUI screens (native window) - runs the pipeline too
     ├── apply.py                  # writes approved tags via Lexicon Local API
     └── config/
         └── source_weights.yaml
@@ -59,6 +61,17 @@ track-record/
 `load → fetch → score/plan → review → apply` - same shape as
 `billboard_tag.py`'s existing `load / fetch / plan / apply`, extended
 with an explicit scoring step and a richer review UI than a flat CSV.
+
+### Choosing what to scan
+
+A plan generation covers one of three pools, picked from the review
+screen itself - no terminal flags: the **whole library** (optionally
+capped to the first N tracks), the **N most recently added** tracks,
+or everything currently in Lexicon's **Incoming** bin. A full-library
+run is slow (rate-limited API calls plus local audio inference per
+track), so a **Stop** button aborts mid-run - it takes effect after
+the current track finishes, not instantly, and keeps whatever was
+already planned as a normal, smaller plan rather than discarding it.
 
 ### Genre/Subgenre fetch sources
 
@@ -76,6 +89,40 @@ Queried independently per track, never merged blindly:
 
 No cap on candidate tags per track.
 
+`discogs-maest`'s classes are `Genre---Style` pairs (e.g.
+`"Hip Hop---RnB/Swing"`); both halves become separate candidates, so a
+genre-level tag can benefit from cross-source agreement the same way a
+style-level one does.
+
+#### Matching a DJ library's title/artist strings against public catalogs
+
+DJ libraries routinely spell things in ways MusicBrainz/Discogs won't
+match verbatim - both fetch sources normalize before searching, then
+fall back to the untouched original if the normalized version finds
+nothing:
+
+- **Edit/version suffixes** - `"Hollaback Girl (Intro Clean)"`,
+  `"... (MM Edit)"` - stripped from the title before search (a survey
+  of one real library found 99% of tracks carried at least one of
+  these). Same paren/bracket-stripping regex `billboard_tag.py` already
+  uses for chart-title matching.
+- **Merged featured-artist credits** - `"Nelly Furtado ft Timbaland"`
+  is stored as one Artist field, but both catalogs index releases under
+  the primary artist alone. Same `ARTIST_SPLIT` pattern
+  `billboard_tag.py` uses for chart-artist matching, applied before
+  search rather than to build a fuzzy key.
+- **Bootleg/compilation Discogs releases** - a result whose `format`
+  says `Compilation` or `Unofficial Release` describes dozens of
+  unrelated tracks, not the one asked about, and is skipped rather than
+  trusted.
+
+These fix the common, generic cases. Some mismatches are one-off and
+not fixable by normalization - e.g. an act catalogued under a
+stylized spelling Discogs itself uses (`N*E*R*D`), or a MusicBrainz
+recording that matches fine but has no genre/tag data attached at any
+level. `billboard_tag.py`'s `ARTIST_ALIASES` dict is the precedent for
+handling a specific one-off by hand if one turns out to matter.
+
 ### Scoring
 
 ```
@@ -89,11 +136,37 @@ code.
 
 ### Review
 
-Any tag clearing the auto-include bar (2+ agreeing sources, or an
-equivalent combined score) is written straight to the applied log and
-never shown for approval. Everything else appears in the review screen,
-grouped by track, with a plain checkbox + tag + confidence row by
-default - source, notes, and links live behind a `⋮` overflow control.
+Everything that doesn't clear the auto-include confidence bar appears
+in the review screen, grouped by track, with a plain checkbox + tag +
+confidence row - source, notes, and links live behind a `⋮` overflow
+control. A global "Select all" and a per-track "Select all for this
+track" checkbox speed up working through a large plan; both just
+drive the same per-row checkboxes "Save Decisions" already reads.
+
+A row proposing a tag that doesn't exist in the library yet also gets
+a category picker, defaulting to `new_tag_category` from
+`source_weights.yaml` if that resolves to a real category - always
+changeable, and always review-gated. Creating a tag is a bigger action
+than adding an existing one, so this never happens automatically
+regardless of confidence.
+
+### Auto-include and the dry-run gate
+
+A tag that *does* clear the auto-include bar skips the checkbox screen
+by design - but it still shouldn't be written silently. A **"Dry
+run"** checkbox, on by default, keeps a plan generation a pure
+preview: the auto-include tier is shown as a pending list (tag names
+and confidence, grouped by track, "N tag(s) cleared the auto-include
+confidence bar (X%+)"), and nothing is written until "Apply now" is
+clicked deliberately. Unchecking dry run applies the auto-include tier
+immediately when generation finishes instead, for a routine run where
+that's wanted.
+
+Either way, exactly what was (or would be) written is always spelled
+out, never applied silently. A pending set also survives closing and
+reopening the app - it's restored from the plan already on disk, not
+just held in memory - and generating a new plan over a still-pending
+set asks for confirmation first rather than discarding it.
 
 ### Apply
 
@@ -113,33 +186,32 @@ explicit goal.
 
 ## Status
 
+The full Genre/Subgenre pipeline (fetch → score → plan → review →
+apply) runs end-to-end entirely from `review_ui.py` - no terminal
+needed except to launch it once - and has been exercised against a
+real ~1,770-track Lexicon library.
+
 - **Charts action**: ported from `billboard_tag.py` as-is, working.
 - **Genre/Subgenre fetch sources**: MusicBrainz, Discogs, and the local
-  `discogs-maest` audio model are implemented and tested against a real
-  Lexicon library. `llm_web_search.py` is a stub, on hold over web
-  search API cost.
+  `discogs-maest` audio model are implemented, each with the
+  normalization described above. `llm_web_search.py` is a stub, on
+  hold over web search API cost.
 - **Scoring**: implemented (`scoring.py`, weighted noisy-OR).
-- **Load → fetch → score/plan**: implemented (`plan.py`'s
-  `generate_plan()`), tested end-to-end against a real library over the
-  Lexicon Local API - reads tags/tracks, resolves candidate tags
-  against what already exists, and writes a plan of auto-include /
-  needs-review / propose-a-new-tag rows. Callable from the CLI or
-  directly (used by the GUI below); a new tag's category is only a
-  suggested default here - always changeable, and always review-gated,
-  never auto-included.
-- **Review UI**: implemented (`review_ui.py`, NiceGUI native window) -
-  the whole workflow lives here now, not just review: a "Generate Plan"
-  button (with an optional tracks-to-scan limit) runs the pipeline
-  in-process with a live per-track progress bar, no terminal needed.
-  Tracks grouped in expandable sections, checkbox + tag + confidence
-  bar per row, low-confidence flag, a category picker on new-tag rows,
-  source/note/links behind an overflow menu, "Save Decisions" button.
-- **Apply**: implemented (`apply.py`) - applies the plan's auto rows
-  immediately; review_ui.py calls into it for whatever a DJ checks.
-  Merge-never-replace, same rule as `billboard_tag.py`.
+- **Plan generation** (`plan.py`'s `generate_plan()`): reads
+  tags/tracks over the Lexicon Local API, resolves candidates against
+  what already exists, writes an auto-include / needs-review /
+  propose-a-new-tag plan. Callable from the CLI or directly (used by
+  the GUI); a scan-mode picker chooses whole library / most recently
+  added / Incoming, with an optional Stop mid-run.
+- **Review UI** (`review_ui.py`, NiceGUI native window): the whole
+  workflow lives here - "Generate Plan" with live per-track progress,
+  a dry-run gate in front of auto-include writes, global and per-track
+  "Select all", a category picker on new-tag rows, source/note/links
+  behind an overflow menu, "Save Decisions".
+- **Apply** (`apply.py`): merge-never-replace, same rule as
+  `billboard_tag.py`. Auto-include rows go through the dry-run gate
+  above; review/create rows go through `apply_decisions()` once
+  checked and saved.
 
-The full Genre/Subgenre pipeline (fetch → score → plan → review →
-apply) exists end-to-end, runs entirely from `review_ui.py`, and has
-been exercised against a real Lexicon library. `llm_web_search.py`
-remains a stub, on hold over web search API cost for a full library
-pass.
+`llm_web_search.py` remains a stub, on hold over web search API cost
+for a full library pass.
