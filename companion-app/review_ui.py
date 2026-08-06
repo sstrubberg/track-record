@@ -48,6 +48,7 @@ from nicegui import run, ui
 import apply
 import lexicon_client
 import plan as plan_module
+import scoring
 
 PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 
@@ -77,6 +78,7 @@ def build_ui() -> None:
     state = {"plan": load_plan(PLAN_FILE)}
     progress = {"current": 0, "total": 0, "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
+    weights = scoring.load_weights()  # just for auto_section()'s "cleared the N% bar" text
 
     ui.label("Track Record — Genre/Subgenre Review").classes("text-xl font-bold")
 
@@ -148,8 +150,10 @@ def build_ui() -> None:
     def _group_auto_rows(rows: list[dict]) -> list[dict]:
         by_track: dict[int, dict] = {}
         for r in rows:
-            t = by_track.setdefault(r["track_id"], {"artist": r["artist"], "title": r["title"], "tags": []})
-            t["tags"].append(r["tag"])
+            t = by_track.setdefault(r["track_id"], {"artist": r["artist"], "title": r["title"], "rows": []})
+            t["rows"].append(r)
+        for t in by_track.values():
+            t["rows"].sort(key=lambda r: -r["confidence"])
         return sorted(by_track.values(), key=lambda t: ((t["artist"] or ""), t["title"] or ""))
 
     async def apply_pending_auto() -> None:
@@ -191,19 +195,22 @@ def build_ui() -> None:
 
         if rows:
             grouped = _group_auto_rows(rows)
+            min_conf = weights.get("auto_include", {}).get("min_confidence", 1.0)
             with ui.column().classes("w-full gap-1"):
                 with ui.row().classes("items-center gap-2"):
                     ui.icon("visibility", color="grey")
                     ui.label(
-                        f"Dry run — {len(rows)} tag(s) across {len(grouped)} track(s) "
-                        f"would auto-apply, nothing written yet"
+                        f"{len(rows)} tag(s) across {len(grouped)} track(s) cleared the "
+                        f"auto-include confidence bar ({min_conf:.0%}+) — click Apply now "
+                        f"to write them to Lexicon. Nothing has been written yet."
                     ).classes("text-gray-500")
                     apply_auto_button = ui.button(
                         "Apply now", on_click=apply_pending_auto
                     ).props("outline dense color=primary")
-                with ui.expansion("Show pending tags", value=False).classes("w-full"):
+                with ui.expansion("Show pending tags", value=True).classes("w-full"):
                     for t in grouped:
-                        ui.label(f"{t['artist']} — {t['title']}: {', '.join(t['tags'])}").classes(
+                        tags = ", ".join(f"{r['tag']} ({r['confidence']:.0%})" for r in t["rows"])
+                        ui.label(f"{t['artist']} — {t['title']}: {tags}").classes(
                             "text-sm text-gray-500"
                         )
 
@@ -226,14 +233,30 @@ def build_ui() -> None:
         tracks = group_by_track(plan.get("review", []), plan.get("create", []))
         entries: list[tuple[dict, ui.checkbox, ui.select | None]] = []
 
-        ui.label(f"{len(tracks)} track(s) need a decision").classes("text-gray-500")
+        def toggle_all(e) -> None:
+            for _, cb, _ in entries:
+                cb.value = e.value
+
+        with ui.row().classes("items-center gap-2"):
+            ui.checkbox("Select all", value=False, on_change=toggle_all)
+            ui.label(f"{len(tracks)} track(s) need a decision").classes("text-gray-500")
 
         for _, info in sorted(tracks.items(), key=lambda kv: ((kv[1]["artist"] or ""), kv[1]["title"] or "")):
             rows = sorted(info["rows"], key=lambda r: -r["confidence"])
             with ui.expansion(f"{info['artist']} — {info['title']}", caption=f"{len(rows)} candidate(s)").classes("w-full"):
+                track_checkboxes: list[ui.checkbox] = []
+
+                def toggle_track(e, cbs=track_checkboxes) -> None:
+                    for cb in cbs:
+                        cb.value = e.value
+
+                with ui.row().classes("items-center gap-2 py-1"):
+                    ui.checkbox("Select all for this track", value=False, on_change=toggle_track)
+
                 for row in rows:
                     with ui.row().classes("items-center w-full gap-2 py-1"):
                         cb = ui.checkbox(value=False)
+                        track_checkboxes.append(cb)
 
                         label = row["tag"] + ("  (new tag)" if row["is_new"] else "")
                         ui.label(label).classes("flex-grow")
