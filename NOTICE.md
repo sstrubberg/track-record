@@ -7,7 +7,12 @@ pretrained third-party models under their own, separate terms:
 
 - **discogs-maest** - genre/subgenre classification on raw audio,
   Discogs-400-style taxonomy
-- **mood-jamendo** - mood/theme classification (v2, not yet integrated)
+- **discogs-effnet** (`discogs-effnet-bs64-1`) - used here purely as an
+  embedding extractor, not for its own genre predictions - feeds the
+  mood/theme head below
+- **mtg_jamendo_moodtheme** (`mtg_jamendo_moodtheme-discogs-effnet-1`) -
+  56-class mood/theme multi-label classification on discogs-effnet
+  embeddings
 
 Both are produced by the [Music Technology Group (MTG)](https://www.upf.edu/web/mtg)
 and distributed for use with [Essentia](https://essentia.upf.edu/), under
