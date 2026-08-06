@@ -215,7 +215,12 @@ def build_ui() -> None:
                         )
 
     apply_auto_button = None
-    auto_section()
+    # A previous run's still-pending auto rows are already sitting in
+    # genre_plan.json (generate_plan() writes the whole plan, "auto"
+    # included) - restore them here the same way review_section() below
+    # restores review/create from the same loaded plan, or a relaunch
+    # after a dry run silently drops the only GUI path back to them.
+    auto_section(rows=(state["plan"] or {}).get("auto"))
 
     @ui.refreshable
     def review_section() -> None:
@@ -316,6 +321,23 @@ def build_ui() -> None:
     review_section()
 
     async def generate():
+        pending = (state["plan"] or {}).get("auto")
+        if pending:
+            with ui.dialog() as confirm_dialog, ui.card():
+                ui.label(
+                    f"{len(pending)} tag(s) from the last plan are still "
+                    f"pending (never applied). Generating a new plan will "
+                    f"discard them - they won't be written anywhere."
+                )
+                with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                    ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
+                    ui.button(
+                        "Discard and generate", color="negative",
+                        on_click=lambda: confirm_dialog.submit("continue"),
+                    )
+            if await confirm_dialog != "continue":
+                return
+
         stop_event.clear()
         generate_button.disable()
         stop_button.visible = True
