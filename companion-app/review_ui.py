@@ -6,6 +6,16 @@ tab). The whole workflow lives here now - generate a plan, review it,
 save decisions - so nothing needs the terminal except launching this
 one file.
 
+One rule holds for the whole screen: "Generate Plan" never writes
+anything, ever - it's always just a preview, no toggle needed because
+there's no other mode. Exactly one action writes to Lexicon: "Save
+Decisions", and it writes whatever is checked, nothing more. There
+used to be a second write path (auto-include tags applied via their
+own "Apply now" button, gated by a "Dry run" checkbox) - collapsed
+into this one, since a DJ has to hold two different mental models
+("did I dry-run this? which button do I click for which rows?") for
+what's really one action either way.
+
 Layout:
 - "Generate Plan" runs the whole load -> fetch -> score pipeline
   in-process via plan.py's generate_plan(), with a live per-track
@@ -16,25 +26,28 @@ Layout:
   added, or everything in Lexicon's Incoming bin. "Stop" aborts a run
   in progress - takes effect after the current track finishes (can't
   safely interrupt mid-network-call or mid-inference), and keeps
-  whatever was already planned as a normal, smaller plan.
-- Rows clearing the auto-include confidence bar skip the review
-  screen by design, but still need a DJ's sign-off before anything
-  actually gets written - a "Dry run" checkbox (on by default) keeps
-  "Generate Plan" a pure preview: the auto bucket is shown as pending,
-  nothing is written, until "Apply" is clicked deliberately. Turning
-  dry run off makes Generate Plan apply the auto bucket itself the
-  moment generation finishes, no extra click. Either way, the exact
-  tag names involved - written or still pending - are listed in an
-  "Auto-include" section (collapsed by default, since a full-library
-  run can involve a lot of tags), never applied silently.
-- Tracks grouped in expandable sections. Per candidate row: checkbox
-  (default unchecked) + tag name + confidence bar/percentage.
+  whatever was already planned as a normal, smaller plan. Generating a
+  new plan while the current one has checked-but-unsaved rows asks for
+  confirmation first, rather than silently discarding them.
+- Tracks grouped in expandable sections. Per candidate row: checkbox +
+  tag name + confidence bar/percentage. A row that already cleared the
+  auto-include confidence bar starts pre-checked and gets a green
+  check + tooltip explaining why (and naturally sorts near the top of
+  its track, since rows are ordered by confidence) - still just a
+  checkbox, uncheck it like any other if you disagree.
 - A "create" row (tag doesn't exist yet) also gets a category picker,
   defaulting to new_tag_category from source_weights.yaml if plan.py
   could resolve one, but always changeable here - category choice is a
-  review-time decision, not something to predict beforehand.
+  review-time decision, not something to predict beforehand. Never
+  pre-checked, regardless of confidence - creating a tag is a bigger
+  action than adding an existing one.
 - Source, per-source note, and links live behind a `⋮` overflow menu.
 - "Save Decisions" commits every checked row via apply.apply_decisions().
+
+`apply.py`'s own `apply_auto()` / `python apply.py` CLI path still
+applies a plan's auto bucket immediately with no review step - that's
+a deliberately different, opt-in tool for scripted/headless use (e.g.
+a cron job), not what this screen does.
 """
 
 from __future__ import annotations
@@ -59,18 +72,29 @@ def load_plan(path: Path) -> dict | None:
     return json.loads(path.read_text())
 
 
-def group_by_track(review_rows: list[dict], create_rows: list[dict]) -> dict:
+def group_by_track(auto_rows: list[dict], review_rows: list[dict], create_rows: list[dict]) -> dict:
+    """All three plan buckets share one grouped-by-track view now - auto
+    rows are just regular rows that start pre-checked (see review_section
+    below), not a separate write path. `is_auto` distinguishes them for
+    that pre-check + the "why" badge; `is_new` (create rows only, never
+    auto - a new tag is always review-gated) drives the category picker.
+    """
     tracks: dict[int, dict] = {}
+    for row in auto_rows:
+        t = tracks.setdefault(row["track_id"], {
+            "artist": row["artist"], "title": row["title"], "rows": [],
+        })
+        t["rows"].append({**row, "is_new": False, "is_auto": True})
     for row in review_rows:
         t = tracks.setdefault(row["track_id"], {
             "artist": row["artist"], "title": row["title"], "rows": [],
         })
-        t["rows"].append({**row, "is_new": False})
+        t["rows"].append({**row, "is_new": False, "is_auto": False})
     for row in create_rows:
         t = tracks.setdefault(row["track_id"], {
             "artist": row["artist"], "title": row["title"], "rows": [],
         })
-        t["rows"].append({**row, "is_new": True})
+        t["rows"].append({**row, "is_new": True, "is_auto": False})
     return tracks
 
 
@@ -78,7 +102,7 @@ def build_ui() -> None:
     state = {"plan": load_plan(PLAN_FILE)}
     progress = {"current": 0, "total": 0, "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
-    weights = scoring.load_weights()  # just for auto_section()'s "cleared the N% bar" text
+    weights = scoring.load_weights()  # just for review_section()'s "cleared the N% bar" badge text
 
     ui.label("Track Record — Genre/Subgenre Review").classes("text-xl font-bold")
 
@@ -101,11 +125,6 @@ def build_ui() -> None:
 
     scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
     scan_mode_select.on_value_change(lambda e: scan_mode_hint.set_text(scan_mode_hints[e.value]))
-
-    # On by default - nothing gets written to Lexicon on a Generate Plan
-    # run until this is unchecked, or the pending auto-include tags are
-    # applied by hand via the button in auto_section() below.
-    dry_run_checkbox = ui.checkbox("Dry run — don't write any tags", value=True)
 
     progress_label = ui.label("").classes("text-gray-500")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
@@ -147,95 +166,19 @@ def build_ui() -> None:
 
     ui.timer(0.3, update_progress)
 
-    def _group_auto_rows(rows: list[dict]) -> list[dict]:
-        by_track: dict[int, dict] = {}
-        for r in rows:
-            t = by_track.setdefault(r["track_id"], {"artist": r["artist"], "title": r["title"], "rows": []})
-            t["rows"].append(r)
-        for t in by_track.values():
-            t["rows"].sort(key=lambda r: -r["confidence"])
-        return sorted(by_track.values(), key=lambda t: ((t["artist"] or ""), t["title"] or ""))
-
-    async def apply_pending_auto() -> None:
-        plan = state["plan"]
-        rows = plan.get("auto") if plan else None
-        if not rows:
-            return
-        apply_auto_button.disable()
-        try:
-            entries = await run.io_bound(apply.apply_auto, {"auto": rows})
-        except Exception as e:
-            ui.notify(f"Auto-apply failed: {e}", type="negative")
-            apply_auto_button.enable()
-            return
-        plan["auto"] = []  # consumed - a re-render of this plan won't re-offer them
-        auto_section.refresh(rows=None, applied_entries=entries)
-        ui.notify(
-            f"Applied {sum(len(e['tags_added']) for e in entries)} tag(s) "
-            f"across {len(entries)} track(s)",
-            type="positive",
-        )
-
-    @ui.refreshable
-    def auto_section(rows: list[dict] | None = None, applied_entries: list[dict] | None = None) -> None:
-        """Exactly one of `rows` (dry-run - not yet written) or
-        `applied_entries` (already written, from apply.apply_auto's
-        return value) should be given - never both."""
-        nonlocal apply_auto_button
-
-        if applied_entries:
-            total_tags = sum(len(e["tags_added"]) for e in applied_entries)
-            with ui.expansion(
-                f"Auto-applied: {total_tags} tag(s) across {len(applied_entries)} track(s)",
-                icon="check_circle",
-            ).classes("w-full text-green-600"):
-                for e in sorted(applied_entries, key=lambda e: ((e.get("artist") or ""), e.get("title") or "")):
-                    ui.label(f"{e['artist']} — {e['title']}: {', '.join(e['tags_added'])}").classes("text-sm")
-            return
-
-        if rows:
-            grouped = _group_auto_rows(rows)
-            min_conf = weights.get("auto_include", {}).get("min_confidence", 1.0)
-            with ui.column().classes("w-full gap-1"):
-                with ui.row().classes("items-center gap-2"):
-                    ui.icon("visibility", color="grey")
-                    ui.label(
-                        f"{len(rows)} tag(s) across {len(grouped)} track(s) cleared the "
-                        f"auto-include confidence bar ({min_conf:.0%}+) — click Apply now "
-                        f"to write them to Lexicon. Nothing has been written yet."
-                    ).classes("text-gray-500")
-                    apply_auto_button = ui.button(
-                        "Apply now", on_click=apply_pending_auto
-                    ).props("outline dense color=primary")
-                with ui.expansion("Show pending tags", value=True).classes("w-full"):
-                    for t in grouped:
-                        tags = ", ".join(f"{r['tag']} ({r['confidence']:.0%})" for r in t["rows"])
-                        ui.label(f"{t['artist']} — {t['title']}: {tags}").classes(
-                            "text-sm text-gray-500"
-                        )
-
-    apply_auto_button = None
-    # A previous run's still-pending auto rows are already sitting in
-    # genre_plan.json (generate_plan() writes the whole plan, "auto"
-    # included) - restore them here the same way review_section() below
-    # restores review/create from the same loaded plan, or a relaunch
-    # after a dry run silently drops the only GUI path back to them.
-    auto_section(rows=(state["plan"] or {}).get("auto"))
-
     @ui.refreshable
     def review_section() -> None:
         plan = state["plan"]
-        if not plan or (not plan.get("review") and not plan.get("create")):
-            ui.label(
-                "No plan yet - click Generate Plan above, or run it and "
-                "everything auto-included."
-            ).classes("text-gray-500")
+        if not plan or not (plan.get("auto") or plan.get("review") or plan.get("create")):
+            ui.label("No plan yet - click Generate Plan above.").classes("text-gray-500")
+            state["entries"] = []
             return
 
         categories = lexicon_client.fetch_categories()
         category_options = {c["id"]: c["label"] for c in categories}
+        min_conf = weights.get("auto_include", {}).get("min_confidence", 1.0)
 
-        tracks = group_by_track(plan.get("review", []), plan.get("create", []))
+        tracks = group_by_track(plan.get("auto", []), plan.get("review", []), plan.get("create", []))
         entries: list[tuple[dict, ui.checkbox, ui.select | None]] = []
 
         def toggle_all(e) -> None:
@@ -244,7 +187,10 @@ def build_ui() -> None:
 
         with ui.row().classes("items-center gap-2"):
             ui.checkbox("Select all", value=False, on_change=toggle_all)
-            ui.label(f"{len(tracks)} track(s) need a decision").classes("text-gray-500")
+            ui.label(
+                f"{len(tracks)} track(s) with proposed tags - high-confidence "
+                f"ones are pre-checked, review the rest"
+            ).classes("text-gray-500")
 
         # Inline CSS grid instead of a flex row - every candidate row gets
         # the exact same column widths regardless of whether that
@@ -279,15 +225,26 @@ def build_ui() -> None:
                     ui.checkbox("Select all for this track", value=False, on_change=toggle_track).props("dense")
 
                 for row in rows:
+                    is_auto = row.get("is_auto", False)
                     with ui.element("div").style(ROW_GRID).classes(
                         "w-full px-2 py-2 border-b border-gray-100 dark:border-gray-800 "
                         "hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                        + (" bg-green-50 dark:bg-green-950/30" if is_auto else "")
                     ):
-                        cb = ui.checkbox(value=False).props("dense")
+                        # Pre-checked, not just flagged - a row that already
+                        # cleared the auto-include bar shouldn't need an
+                        # extra click on top of the one Save Decisions
+                        # click everything else needs. Still just a
+                        # checkbox: uncheck it like any other if you
+                        # disagree with this one.
+                        cb = ui.checkbox(value=is_auto).props("dense")
                         track_checkboxes.append(cb)
 
                         label = row["tag"] + ("  · new" if row["is_new"] else "")
-                        tag_label = ui.label(label).classes("truncate cursor-pointer")
+                        label_classes = "truncate cursor-pointer"
+                        if is_auto:
+                            label_classes += " text-green-700 dark:text-green-400"
+                        tag_label = ui.label(label).classes(label_classes)
                         tag_label.on("click", lambda e, cb=cb: setattr(cb, "value", not cb.value))
                         tag_label.tooltip("Click to toggle")
 
@@ -304,7 +261,13 @@ def build_ui() -> None:
                         ui.linear_progress(value=row["confidence"], show_value=False).classes("w-full")
                         ui.label(f"{row['confidence']:.0%}").classes("text-sm text-right")
 
-                        if row.get("low_confidence"):
+                        # Same grid cell serves either badge - a row is
+                        # never both auto-cleared and low-confidence.
+                        if is_auto:
+                            ui.icon("check_circle", color="green").props("size=xs").tooltip(
+                                f"Cleared the auto-include confidence bar ({min_conf:.0%}+) - pre-checked"
+                            )
+                        elif row.get("low_confidence"):
                             ui.icon("warning", color="orange").props("size=xs").tooltip("Low confidence")
                         else:
                             ui.element("div")
@@ -318,6 +281,8 @@ def build_ui() -> None:
                                         item.on("click", lambda url=src["url"]: ui.navigate.to(url, new_tab=True))
 
                         entries.append((row, cb, select))
+
+        state["entries"] = entries  # so generate() can warn before discarding checked-but-unsaved rows
 
         async def save():
             approved_review = [r for r, cb, _ in entries if cb.value and not r["is_new"]]
@@ -365,13 +330,13 @@ def build_ui() -> None:
     review_section()
 
     async def generate():
-        pending = (state["plan"] or {}).get("auto")
-        if pending:
+        checked = sum(1 for _, cb, _ in state.get("entries", []) if cb.value)
+        if checked:
             with ui.dialog() as confirm_dialog, ui.card():
                 ui.label(
-                    f"{len(pending)} tag(s) from the last plan are still "
-                    f"pending (never applied). Generating a new plan will "
-                    f"discard them - they won't be written anywhere."
+                    f"{checked} checked tag(s) haven't been saved yet. "
+                    f"Generating a new plan will discard them - they won't "
+                    f"be written anywhere."
                 )
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
@@ -389,7 +354,6 @@ def build_ui() -> None:
         progress_bar.visible = True
         progress.update(current=0, total=0, artist="", title="", result=None, rendered=-1, stopping=False)
         preview_container.clear()
-        auto_section.refresh(rows=None, applied_entries=None)
         progress_label.text = "starting..."
 
         def on_track_planned(i, total, track, result):
@@ -420,26 +384,13 @@ def build_ui() -> None:
         state["plan"] = new_plan
         review_section.refresh()
 
-        if dry_run_checkbox.value:
-            auto_rows = new_plan.get("auto") or []
-            auto_section.refresh(rows=auto_rows or None, applied_entries=None)
-            auto_desc = f"{len(auto_rows)} auto-include tag(s) pending (dry run - nothing written)"
-        else:
-            applied_entries = []
-            if new_plan.get("auto"):
-                progress_label.text = "applying auto-include tags..."
-                try:
-                    applied_entries = await run.io_bound(apply.apply_auto, new_plan)
-                except Exception as e:
-                    ui.notify(f"Auto-apply failed: {e}", type="negative")
-            auto_section.refresh(rows=None, applied_entries=applied_entries or None)
-            auto_desc = f"{sum(len(e['tags_added']) for e in applied_entries)} tag(s) auto-applied"
-
         stopped = new_plan.get("stopped_early", False)
         ui.notify(
-            f"{'Stopped early' if stopped else 'Plan ready'}: {auto_desc}, "
+            f"{'Stopped early' if stopped else 'Plan ready'}: "
+            f"{len(new_plan['auto'])} pre-checked (high confidence), "
             f"{len(new_plan['review'])} need review, "
-            f"{len(new_plan['create'])} propose a new tag",
+            f"{len(new_plan['create'])} propose a new tag - nothing written "
+            f"yet, review and click Save Decisions",
             type="warning" if stopped else "positive",
         )
 
