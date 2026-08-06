@@ -128,7 +128,15 @@ def _fetch_genres_for_title(artist: str, title: str) -> list[dict]:
     _throttle()
     r = _session.get(
         f"{BASE}/recording/{mbid}",
-        params={"inc": "genres+tags+releases+release-groups", "fmt": "json"},
+        # artist-credits was missing here - without it, MusicBrainz never
+        # sends back an "artist-credit" field at all (confirmed directly:
+        # the key is simply absent from the response, not present-but-
+        # empty), so _artist_id() below always returned None and the
+        # artist-level fallback tier never actually ran. Recording- and
+        # release-group-level lookups still worked fine on their own;
+        # this only affected tracks where BOTH of those come up empty -
+        # which, per this project's own testing, is not a rare case.
+        params={"inc": "genres+tags+releases+release-groups+artist-credits", "fmt": "json"},
         timeout=15,
     )
     r.raise_for_status()
