@@ -41,6 +41,27 @@ def _strip_edit_suffixes(title: str) -> str:
     stripped = _PAREN_SUFFIX.sub("", title).strip()
     return stripped or title
 
+
+# DJ libraries also often merge a featured-artist credit into the same
+# Artist field the primary artist is stored in - "Nelly Furtado ft
+# Timbaland", "N.E.R.D. ft Vita & Lee Harvey" - but Discogs catalogs
+# releases under the primary artist alone, so a search for the merged
+# credit finds nothing (confirmed: "Nelly Furtado ft Timbaland" -> 0
+# results, "Nelly Furtado" alone -> 50, with real genre/style data).
+# Same ARTIST_SPLIT pattern billboard_tag.py uses for chart-artist
+# matching, minus its lowercase/punctuation normalization - this only
+# needs to isolate the primary credit, not build a fuzzy match key.
+_ARTIST_SPLIT = re.compile(
+    r"\s+(?:&|x|and|with|feat\.?|ft\.?|featuring|vs\.?|f/)\s+"
+    r"|,(?!\s*(?:inc|ltd|llc|co|jr|sr)\b)\s*"
+    r"|\s+/\s+", re.I,
+)
+
+
+def _primary_artist(artist: str) -> str:
+    primary = _ARTIST_SPLIT.split(artist)[0].strip()
+    return primary or artist
+
 # A release's `format` array can include these. Both mean its genre/style
 # describes a whole various-songs release, not the one track we asked
 # about - a bootleg comp of 20 unrelated hits tagged "Pop Rap" doesn't
@@ -86,9 +107,10 @@ def fetch_genres(artist: str, title: str) -> list[dict]:
     Each candidate: {"tag": str, "score": 1.0, "source": "discogs",
     "url": str, "note": str}
     """
+    primary_artist = _primary_artist(artist)
     stripped_title = _strip_edit_suffixes(title)
-    candidates = _fetch_genres_for_title(artist, stripped_title)
-    if not candidates and stripped_title != title:
+    candidates = _fetch_genres_for_title(primary_artist, stripped_title)
+    if not candidates and (primary_artist != artist or stripped_title != title):
         candidates = _fetch_genres_for_title(artist, title)
     return candidates
 

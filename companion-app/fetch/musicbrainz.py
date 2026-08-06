@@ -38,6 +38,24 @@ def _strip_edit_suffixes(title: str) -> str:
     stripped = _PAREN_SUFFIX.sub("", title).strip()
     return stripped or title
 
+
+# DJ libraries also often merge a featured-artist credit into the same
+# Artist field the primary artist is stored in - "Nelly Furtado ft
+# Timbaland" - but MusicBrainz's own search doesn't match through that
+# either. Same ARTIST_SPLIT pattern billboard_tag.py uses for
+# chart-artist matching, minus its lowercase/punctuation normalization -
+# this only needs to isolate the primary credit, not build a fuzzy key.
+_ARTIST_SPLIT = re.compile(
+    r"\s+(?:&|x|and|with|feat\.?|ft\.?|featuring|vs\.?|f/)\s+"
+    r"|,(?!\s*(?:inc|ltd|llc|co|jr|sr)\b)\s*"
+    r"|\s+/\s+", re.I,
+)
+
+
+def _primary_artist(artist: str) -> str:
+    primary = _ARTIST_SPLIT.split(artist)[0].strip()
+    return primary or artist
+
 _session = requests.Session()
 _session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
 
@@ -94,9 +112,10 @@ def fetch_genres(artist: str, title: str) -> list[dict]:
     Each candidate: {"tag": str, "score": 1.0, "source": "musicbrainz",
     "url": str, "note": str}
     """
+    primary_artist = _primary_artist(artist)
     stripped_title = _strip_edit_suffixes(title)
-    candidates = _fetch_genres_for_title(artist, stripped_title)
-    if not candidates and stripped_title != title:
+    candidates = _fetch_genres_for_title(primary_artist, stripped_title)
+    if not candidates and (primary_artist != artist or stripped_title != title):
         candidates = _fetch_genres_for_title(artist, title)
     return candidates
 
