@@ -76,14 +76,21 @@ def create_tag(label: str, category_id: int) -> int:
     returns its id. Never call this to create a category; Lexicon has a
     separate /tag-category endpoint this project deliberately doesn't
     use (see NOTICE.md / README - never creates a category on the
-    user's behalf)."""
+    user's behalf).
+
+    The response is a flat object - {"id": ..., "categoryId": ...,
+    "label": ..., "position": ...} - not wrapped in a "data" key like
+    /tracks and /tags are (confirmed directly against a live Lexicon
+    instance). Unlike lexicon_get(), this doesn't unwrap a "data" key
+    at all, since there isn't one to unwrap.
+    """
     r = requests.post(
         f"{LEXICON}/tag",
         json={"categoryId": category_id, "label": label},
         timeout=30,
     )
     r.raise_for_status()
-    return r.json()["data"]["id"]
+    return r.json()["id"]
 
 
 def fetch_library(

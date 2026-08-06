@@ -105,10 +105,22 @@ def apply_decisions(approved_review: list[dict], approved_create: list[dict]) ->
     with the failure. Now it's caught per-tag and reported instead;
     every other approved row still goes through `_merge_rows` below.
 
+    Also checks whether a proposed label already exists before
+    creating it. Two reasons that matters, not just one: a DJ can
+    retry a save after a partial failure (this function doesn't
+    memoize anything across calls), and - the case this was actually
+    caught by - create_tag() itself used to mis-parse a successful
+    response as a failure (see lexicon_client.create_tag's docstring),
+    so a label could already be sitting in Lexicon, created but never
+    attached to a track, from a run that looked like it failed
+    entirely. Either way, re-creating the same label rather than
+    reusing it would leave a duplicate Custom Tag behind.
+
     Returns {"entries": [...] (per _merge_rows - what was actually
     written), "failed_creates": [{"tag": str, "error": str}, ...]}.
     """
     live_tags = {t["id"]: list(t.get("tags") or []) for t in lexicon_client.fetch_library()}
+    _, by_label = lexicon_client.fetch_tag_index()
 
     created_ids: dict[str, int] = {}
     failed_tags: set[str] = set()
@@ -119,14 +131,19 @@ def apply_decisions(approved_review: list[dict], approved_create: list[dict]) ->
         if key in failed_tags:
             continue
         if key not in created_ids:
-            try:
-                created_ids[key] = lexicon_client.create_tag(row["tag"], row["category_id"])
-                print(f"  created tag '{row['tag']}' (id {created_ids[key]})")
-            except Exception as e:
-                failed_tags.add(key)
-                failed_creates.append({"tag": row["tag"], "error": str(e)})
-                print(f"  failed to create tag '{row['tag']}': {e}")
-                continue
+            existing_id = lexicon_client.resolve_tag_id(row["tag"], by_label)
+            if existing_id is not None:
+                created_ids[key] = existing_id
+                print(f"  '{row['tag']}' already exists (id {existing_id}) - reusing it")
+            else:
+                try:
+                    created_ids[key] = lexicon_client.create_tag(row["tag"], row["category_id"])
+                    print(f"  created tag '{row['tag']}' (id {created_ids[key]})")
+                except Exception as e:
+                    failed_tags.add(key)
+                    failed_creates.append({"tag": row["tag"], "error": str(e)})
+                    print(f"  failed to create tag '{row['tag']}': {e}")
+                    continue
         resolved_create.append({**row, "tag_id": created_ids[key]})
 
     entries = _merge_rows(approved_review + resolved_create, live_tags)
