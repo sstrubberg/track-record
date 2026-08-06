@@ -75,7 +75,15 @@ already planned as a normal, smaller plan rather than discarding it.
 
 ### Genre/Subgenre fetch sources
 
-Queried independently per track, never merged blindly:
+Queried independently per track, never merged blindly - and each one
+has its own checkbox in the review screen (on by default), so a DJ can
+turn a source off entirely for a run rather than just down-weighting
+it in `source_weights.yaml`. Useful on its own: `audio_model` is by
+far the slowest part of a run (local inference per track), so a
+metadata-only pass with it off is a fast way to sanity-check
+MusicBrainz/Discogs coverage before committing to a full scan. At
+least one source has to stay on. `plan.py`'s CLI takes the same choice
+via `--sources musicbrainz,discogs`.
 
 - **MusicBrainz** - genre via MBID lookup
 - **Discogs** - style/genre via public API, artist+title search

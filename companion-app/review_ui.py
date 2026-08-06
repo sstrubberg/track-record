@@ -28,7 +28,11 @@ Layout:
   safely interrupt mid-network-call or mid-inference), and keeps
   whatever was already planned as a normal, smaller plan. Generating a
   new plan while the current one has checked-but-unsaved rows asks for
-  confirmation first, rather than silently discarding them.
+  confirmation first, rather than silently discarding them. A source
+  checkbox per fetch source (MusicBrainz, Discogs, the audio model)
+  skips that source entirely for the run if unchecked - not the same
+  as source_weights.yaml's per-source weight, which still applies to
+  whatever's left running. At least one has to stay checked.
 - Tracks grouped in expandable sections. Per candidate row: checkbox +
   tag name + confidence bar/percentage. A row that already cleared the
   auto-include confidence bar starts pre-checked and gets a green
@@ -125,6 +129,24 @@ def build_ui() -> None:
 
     scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
     scan_mode_select.on_value_change(lambda e: scan_mode_hint.set_text(scan_mode_hints[e.value]))
+
+    # Which fetch sources actually run - unchecking one skips it entirely
+    # for the whole run, not just down-weights it (that's still
+    # source_weights.yaml's job). Useful on its own: audio_model is by
+    # far the slowest part of a run (local inference per track), so a
+    # metadata-only pass with it off is a much faster way to sanity-check
+    # MusicBrainz/Discogs coverage before committing to a full scan.
+    SOURCE_LABELS = {
+        "musicbrainz": "MusicBrainz",
+        "discogs": "Discogs",
+        "audio_model": "Audio Model (discogs-maest)",
+    }
+    with ui.row().classes("items-center gap-4"):
+        ui.label("Sources:").classes("text-sm text-gray-500")
+        source_checkboxes = {
+            name: ui.checkbox(label, value=True).props("dense")
+            for name, label in SOURCE_LABELS.items()
+        }
 
     progress_label = ui.label("").classes("text-gray-500")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
@@ -330,6 +352,11 @@ def build_ui() -> None:
     review_section()
 
     async def generate():
+        enabled_sources = {name for name, cb in source_checkboxes.items() if cb.value}
+        if not enabled_sources:
+            ui.notify("Turn at least one source back on before generating a plan", type="warning")
+            return
+
         checked = sum(1 for _, cb, _ in state.get("entries", []) if cb.value)
         if checked:
             with ui.dialog() as confirm_dialog, ui.card():
@@ -370,6 +397,7 @@ def build_ui() -> None:
                 plan_module.generate_plan,
                 limit=limit,
                 scan_mode=scan_mode_select.value,
+                enabled_sources=enabled_sources,
                 on_track_planned=on_track_planned,
                 should_stop=stop_event.is_set,
             )

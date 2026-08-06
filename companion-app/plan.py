@@ -8,9 +8,10 @@ scoring.py, and writes a plan for review_ui.py / apply.py to act on.
 Mirrors billboard_tag.py's load/fetch/plan/apply shape, but as
 separate files instead of one script - see charts/README.md.
 
-    python plan.py --limit 5      # try it on the first 5 tracks
-    python plan.py --track-id 131 # just one track
-    python plan.py                # the whole library
+    python plan.py --limit 5              # try it on the first 5 tracks
+    python plan.py --track-id 131         # just one track
+    python plan.py                        # the whole library
+    python plan.py --sources discogs,audio_model  # skip MusicBrainz
 """
 
 from __future__ import annotations
@@ -29,19 +30,36 @@ from fetch import audio_model, discogs, musicbrainz
 
 PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 
+# llm_web_search isn't in here - it's a stub, on hold over API cost, and
+# was never wired into fetch_candidates() below in the first place.
+# These names are also what review_ui.py's source-toggle checkboxes key
+# off of, and what --sources on the CLI accepts.
+SOURCES = ("musicbrainz", "discogs", "audio_model")
 
-def fetch_candidates(track: dict) -> list[dict]:
+
+def fetch_candidates(track: dict, enabled_sources: set[str] | None = None) -> list[dict]:
+    """`enabled_sources`, if given, restricts which fetch sources actually
+    run for this track - None (the default) means all of them, same as
+    before this existed. Letting a DJ turn a source off entirely (not
+    just down-weight it in source_weights.yaml) is useful on its own -
+    e.g. skipping audio_model for a fast metadata-only pass, since local
+    inference is by far the slowest part of a run."""
+    if enabled_sources is None:
+        enabled_sources = set(SOURCES)
+
     artist, title, location = track.get("artist") or "", track.get("title") or "", track.get("location")
     candidates = []
 
     if artist or title:
         for name, fn in (("musicbrainz", musicbrainz.fetch_genres), ("discogs", discogs.fetch_genres)):
+            if name not in enabled_sources:
+                continue
             try:
                 candidates.extend(fn(artist, title))
             except Exception as e:
                 print(f"    {name} failed: {e}")
 
-    if location:
+    if location and "audio_model" in enabled_sources:
         try:
             candidates.extend(audio_model.fetch_genres(location))
         except Exception as e:
@@ -50,8 +68,14 @@ def fetch_candidates(track: dict) -> list[dict]:
     return candidates
 
 
-def plan_track(track: dict, by_label: dict, weights: dict, suggested_category_id: int | None) -> dict:
-    candidates = fetch_candidates(track)
+def plan_track(
+    track: dict,
+    by_label: dict,
+    weights: dict,
+    suggested_category_id: int | None,
+    enabled_sources: set[str] | None = None,
+) -> dict:
+    candidates = fetch_candidates(track, enabled_sources)
     scored = scoring.score_track(candidates, weights)
     current_tag_ids = set(track.get("tags") or [])
 
@@ -130,6 +154,7 @@ def generate_plan(
     limit: int | None = None,
     track_id: int | None = None,
     scan_mode: str = "all",
+    enabled_sources: set[str] | None = None,
     out_path: str | Path | None = None,
     on_status=None,
     on_track_planned=None,
@@ -145,6 +170,12 @@ def generate_plan(
     added tracks, defaulting to DEFAULT_RECENT_COUNT), or "incoming"
     (everything in Lexicon's Incoming bin, optionally capped).
 
+    enabled_sources restricts which fetch sources run at all (see
+    fetch_candidates()) - None (the default) means every source in
+    SOURCES, same as always. An empty set is allowed (every track plans
+    to nothing) rather than rejected - the caller's problem to guard
+    against if that's not wanted, same as any other empty scan.
+
     on_status(message), if given, is called for one-off progress lines
     (tag index size, library size, ...). on_track_planned(i, total,
     track, result), if given, is called once per track, after it's been
@@ -159,6 +190,8 @@ def generate_plan(
     """
     if scan_mode not in SCAN_MODES:
         raise ValueError(f"scan_mode must be one of {SCAN_MODES}, got {scan_mode!r}")
+    if enabled_sources is not None and not set(enabled_sources) <= set(SOURCES):
+        raise ValueError(f"enabled_sources must be a subset of {SOURCES}, got {enabled_sources!r}")
 
     def status(msg):
         if on_status:
@@ -171,6 +204,9 @@ def generate_plan(
     status(f"  {len(by_id)} tags in Lexicon")
 
     suggested_category_id = _resolve_suggested_category(weights, on_status)
+
+    active = sorted(enabled_sources) if enabled_sources is not None else list(SOURCES)
+    status(f"  sources: {', '.join(active) if active else '(none)'}")
 
     status("reading library...")
     if scan_mode == "recent":
@@ -199,7 +235,7 @@ def generate_plan(
             stopped = True
             status(f"\nstopped after {i - 1}/{len(tracks)} track(s)")
             break
-        result = plan_track(track, by_label, weights, suggested_category_id)
+        result = plan_track(track, by_label, weights, suggested_category_id, enabled_sources)
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
         create_all.extend(result["create"])
@@ -235,8 +271,15 @@ def main():
         help="'recent' = --limit most recently added tracks (default 20); "
              "'incoming' = everything in Lexicon's Incoming bin",
     )
+    p.add_argument(
+        "--sources", default=None,
+        help=f"comma-separated subset of {{{','.join(SOURCES)}}} to query "
+             f"(default: all of them)",
+    )
     p.add_argument("--out", default=None, help="alternate plan output path")
     args = p.parse_args()
+
+    enabled_sources = set(args.sources.split(",")) if args.sources else None
 
     def on_track_planned(i, total, track, result):
         print(f"[{i}/{total}] {track.get('artist')} - {track.get('title')}")
@@ -252,6 +295,7 @@ def main():
         limit=args.limit,
         track_id=args.track_id,
         scan_mode=args.mode,
+        enabled_sources=enabled_sources,
         out_path=args.out,
         on_status=print,
         on_track_planned=on_track_planned,

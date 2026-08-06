@@ -33,10 +33,13 @@ terminal, and generating a plan never writes anything - "Save
 Decisions" is the only action that does:
 
 1. Pick what to scan - whole library (optionally capped to the first
-   N tracks), the N most recently added, or everything in Incoming -
-   and click "Generate Plan". Watch the live per-track progress; "Stop"
-   aborts after the current track and keeps whatever was already
-   planned.
+   N tracks), the N most recently added, or everything in Incoming.
+   A checkbox per fetch source (MusicBrainz, Discogs, the audio model)
+   lets you turn one off for this run entirely - e.g. skip the audio
+   model, by far the slowest part of a run, for a quick metadata-only
+   pass. Click "Generate Plan". Watch the live per-track progress;
+   "Stop" aborts after the current track and keeps whatever was
+   already planned.
 2. Every proposed tag lands in one grouped-by-track list. Tags
    confident enough to auto-include show up **pre-checked**, marked
    with a green check and a tooltip explaining why - review them like
@@ -54,11 +57,12 @@ a plan overnight for review in the morning), `plan.py` and `apply.py`
 are still plain CLIs:
 
 ```
-python plan.py --limit 20            # try it on the first 20 tracks
-python plan.py                        # the whole library
-python plan.py --mode recent          # the 20 most recently added
-python plan.py --mode incoming        # everything in Incoming
-python apply.py                       # applies the plan's auto-include rows immediately
+python plan.py --limit 20                       # try it on the first 20 tracks
+python plan.py                                   # the whole library
+python plan.py --mode recent                     # the 20 most recently added
+python plan.py --mode incoming                   # everything in Incoming
+python plan.py --sources discogs,audio_model     # skip MusicBrainz
+python apply.py                                  # applies the plan's auto-include rows immediately
 ```
 
 ## Trying a fetch source directly
