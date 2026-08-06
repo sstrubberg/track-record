@@ -11,6 +11,15 @@ Two ways in:
 Same rule as billboard_tag.py: merge, never replace - reads each
 track's live tag array and appends, since Lexicon's `tags` field is
 flat and a bare overwrite wipes unrelated tags.
+
+Every function here that touches the applied log takes an optional
+`log_file` - defaults to this action's own genre_applied_log.json, but
+mood_apply.py (a thin wrapper, not a fork) imports and calls these
+same functions with its own log/plan paths instead of duplicating the
+create/merge logic. The genre vs. mood *plan* files stay genuinely
+separate structures (different taxonomies, different scoring config);
+the apply-side logic underneath doesn't know or care which produced
+what it's writing.
 """
 
 from __future__ import annotations
@@ -26,14 +35,14 @@ PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 LOG_FILE = Path(__file__).resolve().parent / "genre_applied_log.json"
 
 
-def _load_log() -> list[dict]:
-    if LOG_FILE.exists():
-        return json.loads(LOG_FILE.read_text())
+def _load_log(log_file: Path = LOG_FILE) -> list[dict]:
+    if log_file.exists():
+        return json.loads(log_file.read_text())
     return []
 
 
-def _save_log(entries: list[dict]) -> None:
-    LOG_FILE.write_text(json.dumps(entries, indent=1))
+def _save_log(entries: list[dict], log_file: Path = LOG_FILE) -> None:
+    log_file.write_text(json.dumps(entries, indent=1))
 
 
 def _merge_rows(rows: list[dict], live_tags: dict[int, list[int]]) -> list[dict]:
@@ -73,7 +82,7 @@ def _merge_rows(rows: list[dict], live_tags: dict[int, list[int]]) -> list[dict]
     return entries
 
 
-def apply_auto(plan: dict) -> list[dict]:
+def apply_auto(plan: dict, log_file: Path = LOG_FILE) -> list[dict]:
     """Apply every row in plan['auto'] immediately. Returns the log
     entries for whatever was actually written - each one names the
     track and exactly which tags landed on it, since "auto" means no
@@ -85,13 +94,15 @@ def apply_auto(plan: dict) -> list[dict]:
     live_tags = {t["id"]: list(t.get("tags") or []) for t in lexicon_client.fetch_library()}
     entries = _merge_rows(rows, live_tags)
     if entries:
-        log = _load_log()
+        log = _load_log(log_file)
         log.extend(entries)
-        _save_log(log)
+        _save_log(log, log_file)
     return entries
 
 
-def apply_decisions(approved_review: list[dict], approved_create: list[dict]) -> dict:
+def apply_decisions(
+    approved_review: list[dict], approved_create: list[dict], log_file: Path = LOG_FILE,
+) -> dict:
     """Called by review_ui.py once a DJ has checked boxes.
 
     `approved_create` rows don't have a tag_id yet - the tag doesn't
@@ -148,9 +159,9 @@ def apply_decisions(approved_review: list[dict], approved_create: list[dict]) ->
 
     entries = _merge_rows(approved_review + resolved_create, live_tags)
     if entries:
-        log = _load_log()
+        log = _load_log(log_file)
         log.extend(entries)
-        _save_log(log)
+        _save_log(log, log_file)
     return {"entries": entries, "failed_creates": failed_creates}
 
 

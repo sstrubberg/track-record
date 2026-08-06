@@ -2,9 +2,9 @@
 
 A [Lexicon](https://www.lexicondj.com/) DJ plugin + companion app that
 enriches a DJ's library with tags Lexicon's built-in "Find Tags" doesn't
-reliably provide: accurate, granular genre/subgenre tags with full
-source attribution and a review step, plus - later - mood/theme
-metadata. Bundles in the existing [Billboard chart-tagging tool](https://github.com/sstrubberg/billboard-tag)
+reliably provide: accurate, granular genre/subgenre tags and mood/theme
+tags, both with full source attribution and a review step. Bundles in
+the existing [Billboard chart-tagging tool](https://github.com/sstrubberg/billboard-tag)
 as a third action, since all three share the same
 fetch → score → review → apply shape.
 
@@ -21,9 +21,11 @@ on the ones that are genuinely ambiguous.
 
 ## Scope
 
-- **v1** (this build): Charts action (ported from `billboard_tag.py`) +
-  Genre/Subgenre action
-- **v2**: Mood/Theme action, same pattern
+Three actions, one shared pipeline shape:
+
+- **Charts** - ported from `billboard_tag.py`
+- **Genre/Subgenre** - MusicBrainz + Discogs + a local audio model
+- **Mood/Theme** - a local audio model only (see below for why)
 
 ## Architecture
 
@@ -46,14 +48,19 @@ track-record/
     │   ├── musicbrainz.py
     │   ├── discogs.py
     │   ├── llm_web_search.py    # Claude/Gemini + web search, artist+title+genre in
-    │   └── audio_model.py       # discogs-maest wrapper (Essentia)
-    ├── scoring.py                # weighted noisy-OR, reads config/source_weights.yaml
-    ├── lexicon_client.py         # shared Local API client (tracks, tags, writes)
-    ├── plan.py                   # load -> fetch -> score, the pipeline itself
-    ├── review_ui.py              # NiceGUI screens (native window) - runs the pipeline too
-    ├── apply.py                  # writes approved tags via Lexicon Local API
+    │   ├── audio_model.py       # discogs-maest wrapper (Essentia) - genre/style
+    │   └── audio_model_mood.py  # discogs-effnet + mtg_jamendo_moodtheme - mood/theme
+    ├── scoring.py                 # weighted noisy-OR - shared by both actions
+    ├── lexicon_client.py          # shared Local API client (tracks, tags, writes)
+    ├── apply.py                   # writes approved tags via Lexicon Local API - shared
+    ├── plan.py                    # Genre/Subgenre: load -> fetch -> score
+    ├── review_ui.py                # Genre/Subgenre: NiceGUI screen, runs the pipeline too
+    ├── mood_plan.py                # Mood/Theme: its own load -> fetch -> score
+    ├── mood_apply.py               # Mood/Theme: thin wrapper around apply.py
+    ├── mood_review_ui.py           # Mood/Theme: its own NiceGUI screen
     └── config/
-        └── source_weights.yaml
+        ├── source_weights.yaml    # Genre/Subgenre tuning
+        └── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file
 ```
 
 ## Shared pipeline
@@ -131,6 +138,36 @@ recording that matches fine but has no genre/tag data attached at any
 level. `billboard_tag.py`'s `ARTIST_ALIASES` dict is the precedent for
 handling a specific one-off by hand if one turns out to matter.
 
+### Mood/Theme fetch source
+
+Just one, deliberately: MusicBrainz and Discogs are genre-and-catalog
+databases with essentially no reliable mood data to query, and LLM web
+search stays on hold over API cost for the same reason it does for
+Genre/Subgenre - so the local audio model (`fetch/audio_model_mood.py`)
+is the whole story here, at least until that changes.
+
+Unlike `discogs-maest` (a single end-to-end model), MTG-Jamendo
+mood/theme is a two-stage pipeline: `discogs-effnet` extracts a general
+audio embedding (used here purely as an embedding extractor - its own
+400-style genre predictions are discarded, only its penultimate layer
+is read), which a small classification head trained on top of those
+embeddings turns into 56 mood/theme class probabilities - `energetic`,
+`uplifting`, `dark`, `romantic`, `film`, `summer`, and 50 more. Same
+`{"tag", "score", "source", "url", "note"}` candidate shape as every
+other source, so it plugs into scoring.py/review unchanged.
+
+Worth being upfront about: this is a genuinely noisier task than genre
+classification. MTG's own published metrics put this exact model's
+test PR-AUC at 0.14, and in this project's own testing a track's
+top-scoring mood rarely clears 20-30% even when it's clearly the right
+call (an orchestral film-score fanfare scoring highest on `film` /
+`action` / `epic` / `trailer` - correct, just not confident-sounding
+the way genre predictions tend to be). `config/mood_weights.yaml`'s
+auto-include threshold is set low relative to Genre/Subgenre's as an
+honest consequence of that, not a claim that this source deserves more
+trust - expect most Mood/Theme runs to lean heavily on the review
+screen rather than auto-include.
+
 ### Scoring
 
 ```
@@ -203,32 +240,42 @@ explicit goal.
 
 ## Status
 
-The full Genre/Subgenre pipeline (fetch → score → plan → review →
-apply) runs end-to-end entirely from `review_ui.py` - no terminal
-needed except to launch it once - and has been exercised against a
-real ~1,770-track Lexicon library.
+Both the Genre/Subgenre and Mood/Theme pipelines (fetch → score → plan
+→ review → apply) run end-to-end entirely from their own review
+screen - no terminal needed except to launch one. Genre/Subgenre has
+been exercised against a real ~1,770-track Lexicon library, including
+real writes; Mood/Theme has been exercised the same way at smaller
+scale so far.
 
 - **Charts action**: ported from `billboard_tag.py` as-is, working.
 - **Genre/Subgenre fetch sources**: MusicBrainz, Discogs, and the local
   `discogs-maest` audio model are implemented, each with the
   normalization described above. `llm_web_search.py` is a stub, on
   hold over web search API cost.
-- **Scoring**: implemented (`scoring.py`, weighted noisy-OR).
-- **Plan generation** (`plan.py`'s `generate_plan()`): reads
-  tags/tracks over the Lexicon Local API, resolves candidates against
-  what already exists, writes an auto-include / needs-review /
-  propose-a-new-tag plan. Callable from the CLI or directly (used by
-  the GUI); a scan-mode picker chooses whole library / most recently
-  added / Incoming, with an optional Stop mid-run.
-- **Review UI** (`review_ui.py`, NiceGUI native window): the whole
-  workflow lives here - "Generate Plan" with live per-track progress,
-  a dry-run gate in front of auto-include writes, global and per-track
-  "Select all", a category picker on new-tag rows, source/note/links
-  behind an overflow menu, "Save Decisions".
-- **Apply** (`apply.py`): merge-never-replace, same rule as
-  `billboard_tag.py`. Auto-include rows go through the dry-run gate
-  above; review/create rows go through `apply_decisions()` once
-  checked and saved.
+- **Mood/Theme fetch source**: the local `discogs-effnet` +
+  `mtg_jamendo_moodtheme` audio model (see above) - implemented,
+  verified against real tracks.
+- **Scoring** (`scoring.py`, weighted noisy-OR): implemented, shared
+  by both actions - each keeps its own `config/*_weights.yaml`.
+- **Plan generation** (`plan.py` / `mood_plan.py`, each its own
+  `generate_plan()`): reads tags/tracks over the Lexicon Local API,
+  resolves candidates against what already exists, writes an
+  auto-include / needs-review / propose-a-new-tag plan. Callable from
+  the CLI or directly (used by each action's GUI); a scan-mode picker
+  chooses whole library / most recently added / Incoming, with an
+  optional Stop mid-run. Genre/Subgenre also has a per-source toggle;
+  Mood/Theme doesn't need one yet, with only one source to toggle.
+- **Review UI** (`review_ui.py` / `mood_review_ui.py`, each a NiceGUI
+  native window on its own port): the whole workflow lives here for
+  each action - "Generate Plan" with live per-track progress (never
+  writes anything), global and per-track "Select all", a category
+  picker on new-tag rows, source/note/links behind an overflow menu,
+  and the one action that writes - "Save Decisions" - applying
+  whatever's checked, pre-checked auto-include rows included.
+- **Apply** (`apply.py`, shared; `mood_apply.py` a thin wrapper around
+  it with its own plan/log paths): merge-never-replace, same rule as
+  `billboard_tag.py`. A tag that already exists is reused rather than
+  recreated, even for a "propose a new tag" row.
 
 `llm_web_search.py` remains a stub, on hold over web search API cost
 for a full library pass.

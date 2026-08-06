@@ -65,6 +65,36 @@ python plan.py --sources discogs,audio_model     # skip MusicBrainz
 python apply.py                                  # applies the plan's auto-include rows immediately
 ```
 
+## Mood/Theme action
+
+```
+python mood_review_ui.py
+```
+
+Same window, same one-write-path model as Genre/Subgenre above (steps
+2-3 are identical - pre-checked high-confidence rows, one "Save
+Decisions"), on its own port (8081) so both windows can be open at
+once. Two differences, both because there's only one fetch source for
+Mood/Theme:
+
+- No source-toggle checkboxes in step 1 - nothing to toggle between
+  yet.
+- Expect fewer pre-checked rows than Genre/Subgenre tends to produce.
+  Mood/theme is a genuinely noisier task for a model to call from
+  audio alone (see the top-level README for the real numbers), so
+  most of what shows up here will need your own judgment in the
+  review list rather than clearing the auto-include bar on its own.
+
+`mood_plan.py` and `mood_apply.py` are the equivalent plain CLIs:
+
+```
+python mood_plan.py --limit 20        # try it on the first 20 tracks
+python mood_plan.py                    # the whole library
+python mood_plan.py --mode recent      # the 20 most recently added
+python mood_plan.py --mode incoming    # everything in Incoming
+python mood_apply.py                   # applies the plan's auto-include rows immediately
+```
+
 ## Trying a fetch source directly
 
 Each module under `fetch/` is runnable on its own for a quick check
@@ -74,9 +104,12 @@ against a real track, before any scoring/review/apply is wired up:
 python fetch/musicbrainz.py "Frankie Knuckles" "Your Love"
 python fetch/discogs.py "Frankie Knuckles" "Your Love"
 python fetch/audio_model.py "/path/to/track.wav"
+python fetch/audio_model_mood.py "/path/to/track.wav"
 ```
 
 `audio_model.py` downloads the discogs-maest model weights (~330 MB,
 CC BY-NC-SA 4.0, see [NOTICE.md](../NOTICE.md)) into `models/` on first
-use - gitignored, not part of this repo. The audio file needs to be at
-least ~30 seconds long; shorter clips raise `input signal is too short`.
+use - gitignored, not part of this repo. `audio_model_mood.py` does
+the same for its own two much smaller model files (~21 MB combined).
+Either way, the audio file needs to be at least ~30 seconds long;
+shorter clips raise `input signal is too short`.

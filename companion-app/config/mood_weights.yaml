@@ -1,0 +1,41 @@
+# Editable per-DJ retuning of the Mood/Theme action - same shape as
+# ../config/source_weights.yaml (the Genre/Subgenre action's own copy of
+# this file), kept separate so tuning one action never touches the
+# other. See scoring.py for how these combine (shared by both actions).
+#
+# confidence = 1 - Π(1 - weight_i * score_i)  across sources that found the tag
+#
+# Only one source right now - audio_model_mood, the local MTG-Jamendo
+# mood/theme classifier (see fetch/audio_model_mood.py) - so with no
+# second source to corroborate against, confidence here reduces to just
+# that one probability times this weight. Kept at 1.0 (full trust in
+# the model's own reported number) rather than inflated to make
+# auto-include fire more - see below for why that matters more than it
+# did for genre.
+sources:
+  audio_model_mood: 1.0
+
+# Mood/theme is a genuinely noisier task than genre - MTG's own published
+# metrics put this model's test PR-AUC at 0.14 (audio_model_mood.py's
+# docstring has the full context) - so a track's top-scoring mood tag
+# rarely clears 30-40% even when it's musically the right call ("film"
+# at 29% for an orchestral fanfare, in this project's own testing).
+# min_confidence is set low relative to Genre/Subgenre's 0.85 as an
+# honest consequence of that, not a decision to trust this source more -
+# auto-include should stay rare here, and it will, even at 0.5.
+auto_include:
+  min_agreeing_sources: 99  # no second source exists yet to agree at all
+  min_confidence: 0.5
+
+# Same reasoning as above - flagged-but-still-shown threshold set lower
+# than Genre/Subgenre's 0.35 to match this model's lower typical range,
+# not because a lower percentage should read as more trustworthy here.
+low_confidence_threshold: 0.15
+
+# Every one of the 56 MTG-Jamendo mood/theme labels ("energetic",
+# "film", "uplifting", ...) is plain English, not something your
+# library's existing tags are likely to already match exactly - expect
+# most proposals to be "create" rows unless you set this. Same rule as
+# Genre/Subgenre's own new_tag_category: only ever a pre-filled default
+# in the review screen's category picker, never auto-applied.
+new_tag_category: ""

@@ -42,6 +42,25 @@
           }
         }
       }
+    },
+    {
+      "id": "trackrecord.tagmoodtheme",
+      "name": "Tag Mood + Theme",
+      "description": "Reviews mood/theme candidates from a local audio model (MTG-Jamendo mood/theme taxonomy - energetic, uplifting, dark, romantic, and 52 more), each with confidence. Merges approved tags; never removes or overwrites existing ones.",
+      "config": {
+        "permissions": {
+          "track": {
+            "read": ["all"],
+            "modify": ["all"],
+            "modifyFields": ["tags"]
+          },
+          "files": {
+            "read": true,
+            "list": true,
+            "write": true
+          }
+        }
+      }
     }
   ]
 }
