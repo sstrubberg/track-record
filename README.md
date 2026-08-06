@@ -136,44 +136,53 @@ code.
 
 ### Review
 
-Everything that doesn't clear the auto-include confidence bar appears
-in the review screen, grouped by track, with a plain checkbox + tag +
-confidence row - source, notes, and links live behind a `⋮` overflow
-control. A global "Select all" and a per-track "Select all for this
-track" checkbox speed up working through a large plan; both just
-drive the same per-row checkboxes "Save Decisions" already reads.
+One rule for the whole screen: **generating a plan never writes
+anything** - it's always just a preview, and exactly one action
+writes to Lexicon: **"Save Decisions"**, which writes whatever is
+checked. Earlier builds had a second write path (an "Apply now"
+button for auto-include tags, gated by a separate "Dry run" checkbox)
+- collapsed into this one, since a DJ shouldn't need two different
+mental models for what's really one action.
+
+Every candidate, from every tier, is grouped by track with a plain
+checkbox + tag + confidence row - source, notes, and links live behind
+a `⋮` overflow control. A row that already cleared the auto-include
+confidence bar starts **pre-checked**, with a green check and a
+tooltip explaining why (and naturally sorts near the top of its track,
+since rows are ordered by confidence) - still just a checkbox, uncheck
+it like any other if you disagree. A global "Select all" and a
+per-track "Select all for this track" checkbox speed up working
+through a large plan; both just drive the same per-row checkboxes
+"Save Decisions" reads.
 
 A row proposing a tag that doesn't exist in the library yet also gets
 a category picker, defaulting to `new_tag_category` from
 `source_weights.yaml` if that resolves to a real category - always
-changeable, and always review-gated. Creating a tag is a bigger action
-than adding an existing one, so this never happens automatically
-regardless of confidence.
+changeable, and never pre-checked regardless of confidence. Creating a
+tag is a bigger action than adding an existing one, so it always needs
+an explicit decision.
 
-### Auto-include and the dry-run gate
-
-A tag that *does* clear the auto-include bar skips the checkbox screen
-by design - but it still shouldn't be written silently. A **"Dry
-run"** checkbox, on by default, keeps a plan generation a pure
-preview: the auto-include tier is shown as a pending list (tag names
-and confidence, grouped by track, "N tag(s) cleared the auto-include
-confidence bar (X%+)"), and nothing is written until "Apply now" is
-clicked deliberately. Unchecking dry run applies the auto-include tier
-immediately when generation finishes instead, for a routine run where
-that's wanted.
-
-Either way, exactly what was (or would be) written is always spelled
-out, never applied silently. A pending set also survives closing and
-reopening the app - it's restored from the plan already on disk, not
-just held in memory - and generating a new plan over a still-pending
-set asks for confirmation first rather than discarding it.
+Generating a new plan while the current one has checked-but-unsaved
+rows asks for confirmation first, rather than silently discarding
+them - checked state also isn't lost on relaunch, since the whole plan
+(including which rows cleared the auto-include bar) is restored from
+disk the same way review/create rows always were.
 
 ### Apply
 
 Merge, never replace: reads the track's live tag array and appends,
 since Lexicon's `tags` field is flat and a bare overwrite wipes
 unrelated tags. Only writes to tag categories that already exist in
-Lexicon; never creates a new category on the user's behalf.
+Lexicon; never creates a new category on the user's behalf. A tag that
+already exists is reused rather than recreated, even for a "propose a
+new tag" row - matters on a retried save, so nothing ends up
+duplicated in Lexicon's tag list.
+
+`apply.py`'s own `apply_auto()` (`python apply.py` from the CLI)
+applies a plan's auto-include tier immediately, no review step - a
+deliberately different, opt-in tool for scripted/headless use (e.g. a
+cron job that generates a plan overnight), not what the review screen
+itself does.
 
 ## License
 
