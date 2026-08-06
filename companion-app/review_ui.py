@@ -347,6 +347,25 @@ def build_ui() -> None:
                 msg += f" - failed to create: {names}"
             ui.notify(msg, type="positive" if not failed else "warning")
 
+            # Drop whatever was actually written from the in-memory plan -
+            # otherwise those rows sit there still checked, the review
+            # screen keeps showing tags that already made it to Lexicon,
+            # and generate()'s "you have unsaved checked rows" guard
+            # falsely trips on a plan that was, in fact, just saved.
+            # Rows that were checked but skipped (no category) or failed
+            # to create are deliberately left in place, still checked -
+            # they still need a decision, nothing happened to them.
+            applied_pairs = {
+                (e["track_id"], tag) for e in result["entries"] for tag in e["tags_added"]
+            }
+            if applied_pairs:
+                for bucket in ("auto", "review", "create"):
+                    plan[bucket] = [
+                        r for r in plan.get(bucket, [])
+                        if (r["track_id"], r["tag"]) not in applied_pairs
+                    ]
+                review_section.refresh()
+
         ui.button("Save Decisions", on_click=save).props("color=primary").classes("mt-4")
 
     review_section()
