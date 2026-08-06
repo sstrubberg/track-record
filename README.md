@@ -54,10 +54,11 @@ track-record/
     ├── lexicon_client.py          # shared Local API client (tracks, tags, writes)
     ├── apply.py                   # writes approved tags via Lexicon Local API - shared
     ├── plan.py                    # Genre/Subgenre: load -> fetch -> score
-    ├── review_ui.py                # Genre/Subgenre: NiceGUI screen, runs the pipeline too
     ├── mood_plan.py                # Mood/Theme: its own load -> fetch -> score
     ├── mood_apply.py               # Mood/Theme: thin wrapper around apply.py
-    ├── mood_review_ui.py           # Mood/Theme: its own NiceGUI screen
+    ├── review_ui.py                 # NiceGUI screen for BOTH actions, one window,
+    │                                 #   a tab each - `python review_ui.py` is the
+    │                                 #   single entry point either way
     └── config/
         ├── source_weights.yaml    # Genre/Subgenre tuning
         └── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file
@@ -265,13 +266,15 @@ scale so far.
   chooses whole library / most recently added / Incoming, with an
   optional Stop mid-run. Genre/Subgenre also has a per-source toggle;
   Mood/Theme doesn't need one yet, with only one source to toggle.
-- **Review UI** (`review_ui.py` / `mood_review_ui.py`, each a NiceGUI
-  native window on its own port): the whole workflow lives here for
-  each action - "Generate Plan" with live per-track progress (never
-  writes anything), global and per-track "Select all", a category
-  picker on new-tag rows, source/note/links behind an overflow menu,
-  and the one action that writes - "Save Decisions" - applying
-  whatever's checked, pre-checked auto-include rows included.
+- **Review UI** (`review_ui.py`, one NiceGUI native window, a tab per
+  action - `python review_ui.py` is the only command either action
+  needs): the whole workflow lives here - "Generate Plan" with live
+  per-track progress (never writes anything), global and per-track
+  "Select all", a category picker on new-tag rows, source/note/links
+  behind an overflow menu, and the one action that writes - "Save
+  Decisions" - applying whatever's checked, pre-checked auto-include
+  rows included. Each tab's plan/checked-row state is independent -
+  switching tabs doesn't lose or mix up either one's progress.
 - **Apply** (`apply.py`, shared; `mood_apply.py` a thin wrapper around
   it with its own plan/log paths): merge-never-replace, same rule as
   `billboard_tag.py`. A tag that already exists is reused rather than

@@ -5,7 +5,8 @@ Same load -> fetch -> score/plan -> review -> apply shape as plan.py
 (the Genre/Subgenre action's own version of this file) - pulls the
 Lexicon library, queries the mood/theme fetch source per track, scores
 candidates via scoring.py (shared, generic - no changes needed there),
-and writes a plan for mood_review_ui.py / mood_apply.py to act on.
+and writes a plan for review_ui.py's Mood/Theme tab / mood_apply.py to
+act on.
 
 A self-contained copy of plan.py's shape rather than a shared module
 plan.py imports from - same call this project already made for
@@ -143,7 +144,7 @@ def generate_plan(
 ) -> dict:
     """Runs the whole load -> fetch -> score pipeline in-process and
     writes the plan to disk. Used by both the CLI below and
-    mood_review_ui.py's "Generate Plan" button.
+    review_ui.py's Mood/Theme tab's "Generate Plan" button.
 
     scan_mode picks which tracks: "all" (default, whole library,
     optionally capped by `limit`), "recent" (the `limit` most recently
@@ -224,7 +225,7 @@ def generate_plan(
 
     status(
         f"\n{len(auto_all)} auto-include, {len(review_all)} need review, "
-        f"{len(create_all)} propose a new tag (pick its category in mood_review_ui.py)"
+        f"{len(create_all)} propose a new tag (pick its category in review_ui.py)"
     )
     status(f"plan -> {path}")
 

@@ -22,39 +22,49 @@ never gets committed:
 | `DISCOGS_TOKEN`   | `fetch/discogs.py`      | https://www.discogs.com/settings/developers (personal access token) |
 | `ANTHROPIC_API_KEY` | `fetch/llm_web_search.py` (not yet built) | https://console.anthropic.com/ |
 
-## Genre/Subgenre action
+## Review UI (Genre/Subgenre and Mood/Theme)
 
 ```
 python review_ui.py
 ```
 
-Opens the whole workflow in one native window. Nothing else needs the
-terminal, and generating a plan never writes anything - "Save
-Decisions" is the only action that does:
+One native window, one command, both actions - a "Genre / Subgenre"
+tab and a "Mood / Theme" tab, each with its own independent plan and
+checked-row state (switching tabs doesn't lose or mix up either one's
+progress). Nothing else needs the terminal, and generating a plan
+never writes anything on either tab - "Save Decisions" is the only
+action that does, per tab:
 
 1. Pick what to scan - whole library (optionally capped to the first
    N tracks), the N most recently added, or everything in Incoming.
-   A checkbox per fetch source (MusicBrainz, Discogs, the audio model)
-   lets you turn one off for this run entirely - e.g. skip the audio
-   model, by far the slowest part of a run, for a quick metadata-only
-   pass. Click "Generate Plan". Watch the live per-track progress;
-   "Stop" aborts after the current track and keeps whatever was
-   already planned.
+   The Genre/Subgenre tab also has a checkbox per fetch source
+   (MusicBrainz, Discogs, the audio model) to turn one off for this
+   run entirely - e.g. skip the audio model, by far the slowest part
+   of a run, for a quick metadata-only pass. (Mood/Theme has no such
+   picker - there's only one source to toggle.) Click "Generate Plan".
+   Watch the live per-track progress; "Stop" aborts after the current
+   track and keeps whatever was already planned.
 2. Every proposed tag lands in one grouped-by-track list. Tags
    confident enough to auto-include show up **pre-checked**, marked
    with a green check and a tooltip explaining why - review them like
    anything else, uncheck one if you disagree. Everything else starts
    unchecked; a global "Select all" and a per-track "Select all for
-   this track" speed up a big plan.
+   this track" speed up a big plan. Expect fewer pre-checked rows on
+   the Mood/Theme tab than Genre/Subgenre tends to produce - mood/theme
+   is a genuinely noisier task for a model to call from audio alone
+   (see the top-level README for the real numbers), so most of what
+   shows up there will need your own judgment rather than clearing the
+   auto-include bar on its own.
 3. Check what you agree with (or leave the pre-checked ones as they
    are) and hit **"Save Decisions"** - the one action that writes to
    Lexicon. Checked-but-unsaved state survives closing and reopening
    the app, and generating a new plan while anything is still checked
    asks for confirmation before discarding it.
 
-If you'd rather drive it from scripts (e.g. a cron job that generates
-a plan overnight for review in the morning), `plan.py` and `apply.py`
-are still plain CLIs:
+If you'd rather drive either action from scripts (e.g. a cron job that
+generates a plan overnight for review in the morning), `plan.py` /
+`apply.py` (Genre/Subgenre) and `mood_plan.py` / `mood_apply.py`
+(Mood/Theme) are still plain CLIs:
 
 ```
 python plan.py --limit 20                       # try it on the first 20 tracks
@@ -63,36 +73,10 @@ python plan.py --mode recent                     # the 20 most recently added
 python plan.py --mode incoming                   # everything in Incoming
 python plan.py --sources discogs,audio_model     # skip MusicBrainz
 python apply.py                                  # applies the plan's auto-include rows immediately
-```
 
-## Mood/Theme action
-
-```
-python mood_review_ui.py
-```
-
-Same window, same one-write-path model as Genre/Subgenre above (steps
-2-3 are identical - pre-checked high-confidence rows, one "Save
-Decisions"), on its own port (8081) so both windows can be open at
-once. Two differences, both because there's only one fetch source for
-Mood/Theme:
-
-- No source-toggle checkboxes in step 1 - nothing to toggle between
-  yet.
-- Expect fewer pre-checked rows than Genre/Subgenre tends to produce.
-  Mood/theme is a genuinely noisier task for a model to call from
-  audio alone (see the top-level README for the real numbers), so
-  most of what shows up here will need your own judgment in the
-  review list rather than clearing the auto-include bar on its own.
-
-`mood_plan.py` and `mood_apply.py` are the equivalent plain CLIs:
-
-```
-python mood_plan.py --limit 20        # try it on the first 20 tracks
-python mood_plan.py                    # the whole library
-python mood_plan.py --mode recent      # the 20 most recently added
-python mood_plan.py --mode incoming    # everything in Incoming
-python mood_apply.py                   # applies the plan's auto-include rows immediately
+python mood_plan.py --limit 20        # same flags, Mood/Theme's own plan/log files
+python mood_plan.py --mode recent
+python mood_apply.py
 ```
 
 ## Trying a fetch source directly

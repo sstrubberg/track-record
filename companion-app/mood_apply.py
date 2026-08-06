@@ -47,7 +47,7 @@ def main():
         print(f"  {e['artist']} - {e['title']}: {', '.join(e['tags_added'])}")
     print(
         f"{len(plan.get('review', []))} review row(s) and "
-        f"{len(plan.get('create', []))} create row(s) still need mood_review_ui.py"
+        f"{len(plan.get('create', []))} create row(s) still need review_ui.py"
     )
 
 
