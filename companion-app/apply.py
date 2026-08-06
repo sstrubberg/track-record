@@ -91,22 +91,42 @@ def apply_auto(plan: dict) -> list[dict]:
     return entries
 
 
-def apply_decisions(approved_review: list[dict], approved_create: list[dict]) -> int:
+def apply_decisions(approved_review: list[dict], approved_create: list[dict]) -> dict:
     """Called by review_ui.py once a DJ has checked boxes.
 
     `approved_create` rows don't have a tag_id yet - the tag doesn't
     exist until this creates it. The same new tag name is only ever
     created once per call, even if several tracks proposed it.
+
+    A single tag failing to create (Lexicon rejects the label, a
+    network hiccup) used to raise straight out of this function,
+    aborting everything else in the same save - including plain
+    review rows that need no creation at all and had nothing to do
+    with the failure. Now it's caught per-tag and reported instead;
+    every other approved row still goes through `_merge_rows` below.
+
+    Returns {"entries": [...] (per _merge_rows - what was actually
+    written), "failed_creates": [{"tag": str, "error": str}, ...]}.
     """
     live_tags = {t["id"]: list(t.get("tags") or []) for t in lexicon_client.fetch_library()}
 
     created_ids: dict[str, int] = {}
+    failed_tags: set[str] = set()
+    failed_creates: list[dict] = []
     resolved_create = []
     for row in approved_create:
         key = row["tag"].lower()
+        if key in failed_tags:
+            continue
         if key not in created_ids:
-            created_ids[key] = lexicon_client.create_tag(row["tag"], row["category_id"])
-            print(f"  created tag '{row['tag']}' (id {created_ids[key]})")
+            try:
+                created_ids[key] = lexicon_client.create_tag(row["tag"], row["category_id"])
+                print(f"  created tag '{row['tag']}' (id {created_ids[key]})")
+            except Exception as e:
+                failed_tags.add(key)
+                failed_creates.append({"tag": row["tag"], "error": str(e)})
+                print(f"  failed to create tag '{row['tag']}': {e}")
+                continue
         resolved_create.append({**row, "tag_id": created_ids[key]})
 
     entries = _merge_rows(approved_review + resolved_create, live_tags)
@@ -114,7 +134,7 @@ def apply_decisions(approved_review: list[dict], approved_create: list[dict]) ->
         log = _load_log()
         log.extend(entries)
         _save_log(log)
-    return len(entries)
+    return {"entries": entries, "failed_creates": failed_creates}
 
 
 def main():

@@ -339,11 +339,26 @@ def build_ui() -> None:
                 ui.notify(msg, type="warning")
                 return
 
-            n = await run.io_bound(apply.apply_decisions, approved_review, approved_create)
+            try:
+                result = await run.io_bound(apply.apply_decisions, approved_review, approved_create)
+            except Exception as e:
+                # apply_decisions() itself only raises for something
+                # outside its own per-tag error handling (e.g. Lexicon
+                # unreachable) - without this, that exception would just
+                # die silently server-side and nothing would ever tell
+                # you Save Decisions didn't actually do anything.
+                ui.notify(f"Save failed: {e}", type="negative")
+                return
+
+            n = len(result["entries"])
+            failed = result["failed_creates"]
             msg = f"Applied {n} track(s)"
             if skipped_no_category:
                 msg += f" - skipped {skipped_no_category} new-tag row(s) with no category chosen"
-            ui.notify(msg, type="positive")
+            if failed:
+                names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed)
+                msg += f" - failed to create: {names}"
+            ui.notify(msg, type="positive" if not failed else "warning")
 
         ui.button("Save Decisions", on_click=save).props("color=primary").classes("mt-4")
 
