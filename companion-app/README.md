@@ -28,38 +28,45 @@ never gets committed:
 python review_ui.py
 ```
 
-One native window, one command, both actions - a "Genre / Subgenre"
-tab and a "Mood / Theme" tab, each with its own independent plan and
-checked-row state (switching tabs doesn't lose or mix up either one's
-progress). Nothing else needs the terminal, and generating a plan
-never writes anything on either tab - "Save Decisions" is the only
-action that does, per tab:
+One native window, one command, one "Generate Plan" for both actions.
+Nothing else needs the terminal, and generating a plan never writes
+anything - "Save Decisions" is the only action that does:
 
 1. Pick what to scan - whole library (optionally capped to the first
-   N tracks), the N most recently added, or everything in Incoming.
-   The Genre/Subgenre tab also has a checkbox per fetch source
-   (MusicBrainz, Discogs, the audio model) to turn one off for this
-   run entirely - e.g. skip the audio model, by far the slowest part
-   of a run, for a quick metadata-only pass. (Mood/Theme has no such
-   picker - there's only one source to toggle.) Click "Generate Plan".
-   Watch the live per-track progress; "Stop" aborts after the current
-   track and keeps whatever was already planned.
-2. Every proposed tag lands in one grouped-by-track list. Tags
-   confident enough to auto-include show up **pre-checked**, marked
-   with a green check and a tooltip explaining why - review them like
-   anything else, uncheck one if you disagree. Everything else starts
-   unchecked; a global "Select all" and a per-track "Select all for
-   this track" speed up a big plan. Expect fewer pre-checked rows on
-   the Mood/Theme tab than Genre/Subgenre tends to produce - mood/theme
-   is a genuinely noisier task for a model to call from audio alone
-   (see the top-level README for the real numbers), so most of what
-   shows up there will need your own judgment rather than clearing the
-   auto-include bar on its own.
+   N tracks), the N most recently added, or everything in Incoming -
+   and which action(s) to include via the "Tag with:" checkboxes
+   (Genre/Subgenre, Mood/Theme, or both; both on by default). With
+   Genre/Subgenre checked, a checkbox per fetch source (MusicBrainz,
+   Discogs, the audio model) also appears, letting you turn one off
+   for this run entirely - e.g. skip the audio model, by far the
+   slowest part of a run, for a quick metadata-only pass. (Mood/Theme
+   has no such picker - there's only one source to toggle.) Click
+   "Generate Plan". With both actions checked, they run as two
+   sequential phases (Genre first, then Mood), each with its own live
+   per-track progress; "Stop" aborts after the current track and keeps
+   whatever was already planned, skipping a not-yet-started second
+   phase entirely rather than starting it after a stop.
+2. Every proposed tag lands in a grouped-by-track list - but a track
+   with both genre and mood candidates doesn't dump them into one
+   pile: its entry splits into a "Genre / Subgenre" sub-group and a
+   "Mood / Theme" sub-group, each with its own confidence-sorted rows
+   and its own "select all." Tags confident enough to auto-include
+   show up **pre-checked**, marked with a green check and a tooltip
+   explaining why - review them like anything else, uncheck one if you
+   disagree. Everything else starts unchecked; a global "Select all"
+   on top of each sub-group's own speeds up a big plan. Expect fewer
+   pre-checked rows in the Mood/Theme sub-groups than Genre/Subgenre
+   tends to produce - mood/theme is a genuinely noisier task for a
+   model to call from audio alone (see the top-level README for the
+   real numbers), so most of what shows up there will need your own
+   judgment rather than clearing the auto-include bar on its own.
 3. Check what you agree with (or leave the pre-checked ones as they
    are) and hit **"Save Decisions"** - the one action that writes to
-   Lexicon. Checked-but-unsaved state survives closing and reopening
-   the app, and generating a new plan while anything is still checked
-   asks for confirmation before discarding it.
+   Lexicon, splitting whatever's checked by kind under the hood and
+   reporting one combined result. Checked-but-unsaved state survives
+   closing and reopening the app, and generating a new plan while
+   anything is still checked asks for confirmation before discarding
+   it.
 
 If you'd rather drive either action from scripts (e.g. a cron job that
 generates a plan overnight for review in the morning), `plan.py` /

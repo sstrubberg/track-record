@@ -57,8 +57,8 @@ track-record/
     ├── mood_plan.py                # Mood/Theme: its own load -> fetch -> score
     ├── mood_apply.py               # Mood/Theme: thin wrapper around apply.py
     ├── review_ui.py                 # NiceGUI screen for BOTH actions, one window,
-    │                                 #   a tab each - `python review_ui.py` is the
-    │                                 #   single entry point either way
+    │                                 #   one Generate Plan, checkboxes choose which
+    │                                 #   action(s) to include
     └── config/
         ├── source_weights.yaml    # Genre/Subgenre tuning
         └── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file
@@ -190,23 +190,42 @@ button for auto-include tags, gated by a separate "Dry run" checkbox)
 - collapsed into this one, since a DJ shouldn't need two different
 mental models for what's really one action.
 
-Every candidate, from every tier, is grouped by track with a plain
-checkbox + tag + confidence row - source, notes, and links live behind
-a `⋮` overflow control. A row that already cleared the auto-include
-confidence bar starts **pre-checked**, with a green check and a
-tooltip explaining why (and naturally sorts near the top of its track,
-since rows are ordered by confidence) - still just a checkbox, uncheck
-it like any other if you disagree. A global "Select all" and a
-per-track "Select all for this track" checkbox speed up working
-through a large plan; both just drive the same per-row checkboxes
-"Save Decisions" reads.
+"Generate Plan" has checkboxes for which action(s) to include -
+Genre/Subgenre, Mood/Theme, or both in the same run - rather than a
+DJ needing to run two separate scans against the same tracks just
+because the two pipelines live in separate config/plan files
+underneath. Selecting both runs them as two sequential phases (Genre
+first, then Mood), each with its own live per-track progress; stopping
+during the first phase skips the second entirely rather than starting
+a new scan after a stop was already requested. Regenerating with only
+one of the two checked leaves the other's existing plan untouched in
+the review list.
+
+Every candidate, from every tier, is grouped by track - but a track
+with both genre and mood candidates doesn't dump them into one
+undifferentiated pile: its expansion splits into a "Genre / Subgenre"
+sub-group and a "Mood / Theme" sub-group, each independently
+confidence-sorted with its own "select all," so the two kinds never
+blur together into a wall of unrelated checkboxes. Within each
+sub-group: plain checkbox + tag + confidence row, source/notes/links
+behind a `⋮` overflow control. A row that already cleared *its own
+action's* auto-include confidence bar (genre and mood are tuned
+independently - see Scoring below) starts **pre-checked**, with a
+green check and a tooltip explaining why (and naturally sorts near the
+top of its sub-group, since rows are ordered by confidence) - still
+just a checkbox, uncheck it like any other if you disagree. A global
+"Select all" and each sub-group's own "select all" speed up working
+through a large plan; all of them just drive the same per-row
+checkboxes "Save Decisions" reads.
 
 A row proposing a tag that doesn't exist in the library yet also gets
-a category picker, defaulting to `new_tag_category` from
-`source_weights.yaml` if that resolves to a real category - always
-changeable, and never pre-checked regardless of confidence. Creating a
-tag is a bigger action than adding an existing one, so it always needs
-an explicit decision.
+a category picker, defaulting to that action's own `new_tag_category`
+config if that resolves to a real category - always changeable, and
+never pre-checked regardless of confidence. Creating a tag is a bigger
+action than adding an existing one, so it always needs an explicit
+decision. Clicking "Save Decisions" splits whatever's checked by kind
+under the hood and calls each action's own `apply_decisions()` -
+potentially both in one click - then reports one combined result.
 
 Generating a new plan while the current one has checked-but-unsaved
 rows asks for confirmation first, rather than silently discarding
@@ -266,15 +285,17 @@ scale so far.
   chooses whole library / most recently added / Incoming, with an
   optional Stop mid-run. Genre/Subgenre also has a per-source toggle;
   Mood/Theme doesn't need one yet, with only one source to toggle.
-- **Review UI** (`review_ui.py`, one NiceGUI native window, a tab per
-  action - `python review_ui.py` is the only command either action
-  needs): the whole workflow lives here - "Generate Plan" with live
-  per-track progress (never writes anything), global and per-track
-  "Select all", a category picker on new-tag rows, source/note/links
-  behind an overflow menu, and the one action that writes - "Save
-  Decisions" - applying whatever's checked, pre-checked auto-include
-  rows included. Each tab's plan/checked-row state is independent -
-  switching tabs doesn't lose or mix up either one's progress.
+- **Review UI** (`review_ui.py`, one NiceGUI native window -
+  `python review_ui.py` is the only command either action needs): the
+  whole workflow lives here - one "Generate Plan" with checkboxes for
+  which action(s) to include, live per-track progress across both
+  phases (never writes anything), each track's candidates split into
+  Genre/Subgenre and Mood/Theme sub-groups so the two never blur
+  together, global and per-sub-group "Select all", a category picker
+  on new-tag rows, source/note/links behind an overflow menu, and the
+  one action that writes - "Save Decisions" - applying whatever's
+  checked (pre-checked auto-include rows included) via each action's
+  own `apply_decisions()`, reporting one combined result.
 - **Apply** (`apply.py`, shared; `mood_apply.py` a thin wrapper around
   it with its own plan/log paths): merge-never-replace, same rule as
   `billboard_tag.py`. A tag that already exists is reused rather than
