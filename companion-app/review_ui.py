@@ -246,25 +246,50 @@ def build_ui() -> None:
             ui.checkbox("Select all", value=False, on_change=toggle_all)
             ui.label(f"{len(tracks)} track(s) need a decision").classes("text-gray-500")
 
+        # Inline CSS grid instead of a flex row - every candidate row gets
+        # the exact same column widths regardless of whether that
+        # particular row has a category picker or a warning icon, so the
+        # checkbox/label/bar/percent line up down the whole track instead
+        # of drifting based on what each row happens to contain. Plain
+        # style (not Tailwind classes) because the column widths are
+        # fixed pixel values, not something arbitrary-value utility
+        # classes reliably cover.
+        ROW_GRID = (
+            "display:grid; grid-template-columns: 32px 1fr 190px 96px 44px 28px 40px; "
+            "column-gap:10px; align-items:center;"
+        )
+
         for _, info in sorted(tracks.items(), key=lambda kv: ((kv[1]["artist"] or ""), kv[1]["title"] or "")):
             rows = sorted(info["rows"], key=lambda r: -r["confidence"])
-            with ui.expansion(f"{info['artist']} — {info['title']}", caption=f"{len(rows)} candidate(s)").classes("w-full"):
+            with ui.expansion(
+                f"{info['artist']} — {info['title']}", caption=f"{len(rows)} candidate(s)"
+            ).classes("w-full border border-gray-200 dark:border-gray-700 rounded-lg mb-2"):
                 track_checkboxes: list[ui.checkbox] = []
 
                 def toggle_track(e, cbs=track_checkboxes) -> None:
                     for cb in cbs:
                         cb.value = e.value
 
-                with ui.row().classes("items-center gap-2 py-1"):
-                    ui.checkbox("Select all for this track", value=False, on_change=toggle_track)
+                # Its own shaded strip so it reads as a control, not a
+                # candidate row - same shape (checkbox + label) as the
+                # rows below it made it easy to mistake for one before.
+                with ui.row().classes(
+                    "items-center gap-2 px-2 py-1 mb-1 bg-gray-50 dark:bg-gray-800 rounded"
+                ):
+                    ui.checkbox("Select all for this track", value=False, on_change=toggle_track).props("dense")
 
                 for row in rows:
-                    with ui.row().classes("items-center w-full gap-2 py-1"):
-                        cb = ui.checkbox(value=False)
+                    with ui.element("div").style(ROW_GRID).classes(
+                        "w-full px-2 py-2 border-b border-gray-100 dark:border-gray-800 "
+                        "hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                    ):
+                        cb = ui.checkbox(value=False).props("dense")
                         track_checkboxes.append(cb)
 
-                        label = row["tag"] + ("  (new tag)" if row["is_new"] else "")
-                        ui.label(label).classes("flex-grow")
+                        label = row["tag"] + ("  · new" if row["is_new"] else "")
+                        tag_label = ui.label(label).classes("truncate cursor-pointer")
+                        tag_label.on("click", lambda e, cb=cb: setattr(cb, "value", not cb.value))
+                        tag_label.tooltip("Click to toggle")
 
                         select = None
                         if row["is_new"]:
@@ -272,15 +297,19 @@ def build_ui() -> None:
                                 category_options,
                                 value=row.get("suggested_category_id"),
                                 label="category",
-                            ).classes("w-40")
+                            ).props("dense outlined").classes("w-full")
+                        else:
+                            ui.element("div")  # empty grid cell - keeps columns aligned
 
-                        ui.linear_progress(value=row["confidence"], show_value=False).classes("w-24")
-                        ui.label(f"{row['confidence']:.0%}").classes("w-12 text-right")
+                        ui.linear_progress(value=row["confidence"], show_value=False).classes("w-full")
+                        ui.label(f"{row['confidence']:.0%}").classes("text-sm text-right")
 
                         if row.get("low_confidence"):
-                            ui.icon("warning", color="orange").tooltip("Low confidence")
+                            ui.icon("warning", color="orange").props("size=xs").tooltip("Low confidence")
+                        else:
+                            ui.element("div")
 
-                        with ui.button(icon="more_vert").props("flat round dense"):
+                        with ui.button(icon="more_vert").props("flat round dense size=sm"):
                             with ui.menu():
                                 for src in row["sources"]:
                                     text = f"{src['source']}: {src.get('note') or ''}"
