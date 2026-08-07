@@ -1,8 +1,9 @@
 """MusicBrainz genre fetch source.
 
 Looks up a track by artist + title and returns its genre tag(s).
-Metadata source: found-or-not, so each result carries score = 1
-(see ../scoring.py for how source weight and score combine).
+Metadata source: found-or-not, so each result normally carries score =
+1 (see ../scoring.py for how source weight and score combine) - except
+artist-level matches, see ARTIST_LEVEL_SCORE below.
 
 MusicBrainz genre data is inconsistently populated - a recording itself
 often has none, even when its release or artist do. So this falls back
@@ -25,6 +26,18 @@ BASE = "https://musicbrainz.org/ws/2"
 USER_AGENT = "TrackRecord/0.1 ( https://github.com/sstrubberg/track-record )"
 REQUEST_DELAY = 1.05
 MATCH_THRESHOLD = 90  # MusicBrainz's own search relevance score (0-100)
+
+# Recording/release-group genres are found-or-not for that specific
+# track/release, same as any other metadata source (score 1.0).
+# Artist-level genres describe the artist's whole career instead, not
+# the one track being planned - discounted rather than trusted the
+# same as a track-specific match, so a lone artist-level match doesn't
+# single-handedly clear auto-include (0.9 MusicBrainz weight * 0.5 ~=
+# 0.45, well under the default 0.85 bar) the way a genuinely specific
+# match should. Still contributes normally to noisy-OR if another
+# source actually agrees - this discounts trust, it doesn't disable
+# the tier.
+ARTIST_LEVEL_SCORE = 0.5
 
 # DJ libraries routinely suffix titles with edit/version notes that
 # aren't part of the actual release - "(Intro Clean)", "(CLEAN) (MM
@@ -99,6 +112,30 @@ def _genres_or_tags(entity: dict) -> list[dict]:
     return entity.get("genres") or entity.get("tags") or []
 
 
+# MusicBrainz's genre/tag data is lowercase folksonomy text ("hip hop",
+# "r&b", "jazz pop") where Discogs' is Title Case ("Hip Hop", "R&B").
+# scoring.py's group_by_tag() already prefers Discogs' exact spelling
+# when both sources propose the same tag for a track, but a tag only
+# MusicBrainz ever proposes (nothing to prefer over it) previously kept
+# its raw lowercase form all the way to the review screen. str.title()
+# isn't perfect - it capitalizes after every non-letter, so "r&b"
+# correctly becomes "R&B" (Discogs' own spelling) but "edm" becomes
+# "Edm" instead of "EDM" - a short, hand-picked list of exceptions for
+# the acronyms MusicBrainz's own genre list actually contains, not an
+# attempt at a complete title-casing engine.
+_ACRONYM_FIXES = {
+    "Edm": "EDM", "Idm": "IDM", "Ebm": "EBM", "Uk": "UK", "Us": "US",
+    "Dj": "DJ", "Rnb": "RnB", "Rocknroll": "Rock'n'Roll",
+}
+
+
+def _title_case_tag(name: str) -> str:
+    titled = name.title()
+    for word, fixed in _ACRONYM_FIXES.items():
+        titled = re.sub(rf"\b{word}\b", fixed, titled)
+    return titled
+
+
 def _artist_id(recording: dict) -> str | None:
     credits = recording.get("artist-credit") or []
     if credits and credits[0].get("artist"):
@@ -109,8 +146,9 @@ def _artist_id(recording: dict) -> str | None:
 def fetch_genres(artist: str, title: str) -> list[dict]:
     """Return candidate genre tags for a track from MusicBrainz.
 
-    Each candidate: {"tag": str, "score": 1.0, "source": "musicbrainz",
-    "url": str, "note": str}
+    Each candidate: {"tag": str, "score": float, "source": "musicbrainz",
+    "url": str, "note": str} - score is 1.0 except for artist-level
+    matches, see ARTIST_LEVEL_SCORE.
     """
     primary_artist = _primary_artist(artist)
     stripped_title = _strip_edit_suffixes(title)
@@ -175,8 +213,19 @@ def _fetch_genres_for_title(artist: str, title: str) -> list[dict]:
         if level == "recording"
         else f"MB {level} genre (recording itself had none)"
     )
+    # Recording- and release-group-level genres describe this specific
+    # track/release - a normal metadata "found it" match, full score
+    # like every other metadata source. Artist-level genres describe
+    # the artist's whole career instead (an act spanning neo-soul,
+    # jazz, hip hop, and pop over 20 years doesn't make every one of
+    # those genres true of any given song) - discounted rather than
+    # trusted at the same level, so a lone artist-level match reads
+    # honestly as a weaker signal (well under auto-include on its own)
+    # instead of masquerading as a specific one. It still climbs
+    # normally through noisy-OR if another source actually agrees.
+    score = ARTIST_LEVEL_SCORE if level == "artist" else 1.0
     return [
-        {"tag": g["name"], "score": 1.0, "source": "musicbrainz", "url": url, "note": note}
+        {"tag": _title_case_tag(g["name"]), "score": score, "source": "musicbrainz", "url": url, "note": note}
         for g in genres
         if g.get("name")
     ]
