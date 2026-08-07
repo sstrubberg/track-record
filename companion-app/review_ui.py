@@ -23,7 +23,7 @@ together. Each sub-group gets its own "select all" too.
 
 One rule still holds regardless: "Generate Plan" never writes
 anything, ever - it's always just a preview. Exactly one action writes
-to Lexicon: "Save Decisions", and it writes whatever is checked,
+to Lexicon: "Apply Tags", and it writes whatever is checked,
 splitting checked rows by kind under the hood and calling each
 action's own apply_decisions() - genre_apply for genre rows,
 mood_apply for mood rows, potentially both in one click - then
@@ -546,8 +546,8 @@ def build_ui() -> None:
                 # outside its own per-tag error handling (e.g. Lexicon
                 # unreachable) - without this, that exception would just
                 # die silently server-side and nothing would ever tell
-                # you Save Decisions didn't actually do anything.
-                notify(f"Save failed: {e}", type="negative")
+                # you Apply Tags didn't actually do anything.
+                notify(f"Apply failed: {e}", type="negative")
                 return
 
             # Count unique tracks, not len(entries) summed across kinds -
@@ -588,7 +588,7 @@ def build_ui() -> None:
             if changed:
                 review_section.refresh()
 
-        ui.button("Save Decisions", on_click=save).props("color=primary").classes("mt-4")
+        ui.button("Apply Tags", on_click=save).props("color=primary").classes("mt-4")
 
     review_section()
 
@@ -726,7 +726,7 @@ def build_ui() -> None:
         summary = " | ".join(parts) if parts else "no plan generated"
         notify(
             f"{'Stopped early' if stopped else 'Plan ready'}: {summary} - nothing written yet, "
-            f"review and click Save Decisions",
+            f"review and click Apply Tags",
             type="negative" if any_failed else ("warning" if stopped else "positive"),
         )
 

@@ -184,7 +184,7 @@ code.
 
 One rule for the whole screen: **generating a plan never writes
 anything** - it's always just a preview, and exactly one action
-writes to Lexicon: **"Save Decisions"**, which writes whatever is
+writes to Lexicon: **"Apply Tags"**, which writes whatever is
 checked. Earlier builds had a second write path (an "Apply now"
 button for auto-include tags, gated by a separate "Dry run" checkbox)
 - collapsed into this one, since a DJ shouldn't need two different
@@ -216,7 +216,7 @@ top of its sub-group, since rows are ordered by confidence) - still
 just a checkbox, uncheck it like any other if you disagree. A global
 "Select all" and each sub-group's own "select all" speed up working
 through a large plan; all of them just drive the same per-row
-checkboxes "Save Decisions" reads.
+checkboxes "Apply Tags" reads.
 
 A plan spanning thousands of tracks is paginated - 50 tracks per page
 by default, configurable to 25/100/200 in the UI - with each track's
@@ -226,7 +226,7 @@ took the initial page from ~521,000 DOM nodes / 20.6s to build down to
 937 nodes / 0.73s. Checked/category state lives in memory keyed by
 track rather than in the on-page checkbox widgets themselves, so it
 survives turning the page - checking a tag on page 1 and a different
-one on page 3 both land in the same "Save Decisions" click, and both
+one on page 3 both land in the same "Apply Tags" click, and both
 "select all" controls act on the whole plan, not just the visible
 page.
 
@@ -235,7 +235,7 @@ a category picker, defaulting to that action's own `new_tag_category`
 config if that resolves to a real category - always changeable, and
 never pre-checked regardless of confidence. Creating a tag is a bigger
 action than adding an existing one, so it always needs an explicit
-decision. Clicking "Save Decisions" splits whatever's checked by kind
+decision. Clicking "Apply Tags" splits whatever's checked by kind
 under the hood and calls each action's own `apply_decisions()` -
 potentially both in one click - then reports one combined result.
 
@@ -305,7 +305,7 @@ scale so far.
   Genre/Subgenre and Mood/Theme sub-groups so the two never blur
   together, global and per-sub-group "Select all", a category picker
   on new-tag rows, source/note/links behind an overflow menu, and the
-  one action that writes - "Save Decisions" - applying whatever's
+  one action that writes - "Apply Tags" - applying whatever's
   checked (pre-checked auto-include rows included) via each action's
   own `apply_decisions()`, reporting one combined result.
 - **Apply** (`apply.py`, shared; `mood_apply.py` a thin wrapper around

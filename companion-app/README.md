@@ -30,7 +30,7 @@ python review_ui.py
 
 One native window, one command, one "Generate Plan" for both actions.
 Nothing else needs the terminal, and generating a plan never writes
-anything - "Save Decisions" is the only action that does:
+anything - "Apply Tags" is the only action that does:
 
 1. Pick what to scan - whole library (optionally capped to the first
    N tracks), the N most recently added, or everything in Incoming -
@@ -64,12 +64,12 @@ anything - "Save Decisions" is the only action that does:
    page by default, configurable to 25/100/200 via the "tracks per
    page" picker above the list - and each track's rows aren't built
    until you actually expand it, so the screen stays responsive
-   regardless of plan size. "Select all" and Save Decisions both act
+   regardless of plan size. "Select all" and Apply Tags both act
    across the *whole* plan, not just the visible page, so checking a
    tag on page 1 and a different one on page 3 both make it into the
-   same save.
+   same Apply Tags click.
 3. Check what you agree with (or leave the pre-checked ones as they
-   are) and hit **"Save Decisions"** - the one action that writes to
+   are) and hit **"Apply Tags"** - the one action that writes to
    Lexicon, splitting whatever's checked by kind under the hood and
    reporting one combined result. Checked-but-unsaved state survives
    closing and reopening the app, and generating a new plan while
