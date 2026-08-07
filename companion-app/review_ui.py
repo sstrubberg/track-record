@@ -480,6 +480,21 @@ def build_ui() -> None:
             if await confirm_dialog != "continue":
                 return
 
+            # Confirming "Discard and generate" should actually discard
+            # them right away, not just schedule a replacement that
+            # only shows up once the new run finishes - otherwise the
+            # stale list (checkboxes, expansions, everything) keeps
+            # sitting on screen for the whole run, which reads as if
+            # nothing was discarded at all. Only clears whichever
+            # action(s) are about to be regenerated - matches
+            # generate()'s own rule elsewhere that an action left
+            # unchecked this run keeps its existing plan untouched.
+            if include_genre:
+                state["genre_plan"] = None
+            if include_mood:
+                state["mood_plan"] = None
+            review_section.refresh()
+
         stop_event.clear()
         generate_button.disable()
         stop_button.visible = True
