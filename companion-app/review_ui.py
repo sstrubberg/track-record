@@ -75,6 +75,7 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from nicegui import run, ui
@@ -150,7 +151,51 @@ def build_ui() -> None:
     genre_weights = scoring.load_weights()  # just for the "cleared the N% bar" badge text, per kind
     mood_weights = scoring.load_weights(mood_plan.WEIGHTS_PATH)
 
-    ui.label("Track Record").classes("text-xl font-bold")
+    # Toasts (ui.notify) vanish on their own after a few seconds, with
+    # no way back to one you glanced past - the actual counts in a
+    # "Plan ready: ..." toast are exactly the kind of thing worth
+    # re-reading a minute later. notify() below shows the same toast
+    # as before but also appends to this session's history, kept in a
+    # popover behind a bell icon (click to open, click away to close -
+    # a menu, not a modal dialog, so it never blocks the rest of the
+    # screen) rather than a second copy of the same disappearing toast.
+    state_notifications: list[dict] = []
+    _NOTIFY_ICONS = {
+        "positive": ("check_circle", "text-green-600"),
+        "warning": ("warning", "text-orange-500"),
+        "negative": ("error", "text-red-600"),
+    }
+
+    with ui.row().classes("items-center justify-between w-full"):
+        ui.label("Track Record").classes("text-xl font-bold")
+        with ui.button(icon="notifications").props("flat round dense"):
+            notif_badge = ui.badge("0", color="red").props("floating")
+            with ui.menu():
+                with ui.column().classes("p-3 gap-2 w-[28rem] max-h-96 overflow-y-auto") as notif_list:
+                    pass
+
+    def render_notifications() -> None:
+        notif_list.clear()
+        with notif_list:
+            if not state_notifications:
+                ui.label("No notifications yet").classes("text-gray-500 text-sm")
+            for n in state_notifications:
+                icon, color = _NOTIFY_ICONS.get(n["type"], ("info", "text-gray-600"))
+                with ui.row().classes("items-start gap-2 w-full"):
+                    ui.icon(icon).classes(f"{color} mt-1").props("size=xs")
+                    with ui.column().classes("gap-0 flex-grow min-w-0"):
+                        ui.label(n["message"]).classes(f"text-sm {color}")
+                        ui.label(n["time"].strftime("%-I:%M:%S %p")).classes("text-xs text-gray-400")
+        notif_badge.text = str(len(state_notifications))
+        notif_badge.visible = bool(state_notifications)
+
+    def notify(message: str, type: str = "positive") -> None:  # noqa: A002 - matches ui.notify's own param name
+        ui.notify(message, type=type)
+        state_notifications.insert(0, {"message": message, "type": type, "time": datetime.now()})
+        del state_notifications[50:]  # cap history so a long session doesn't grow this unbounded
+        render_notifications()
+
+    render_notifications()
 
     scan_mode_hints = {
         "all": "Leave count blank to scan the whole library.",
@@ -386,7 +431,7 @@ def build_ui() -> None:
                 msg = "Nothing checked - nothing to save"
                 if skipped_no_category:
                     msg = f"{skipped_no_category} new-tag row(s) checked but no category chosen - pick one first"
-                ui.notify(msg, type="warning")
+                notify(msg, type="warning")
                 return
 
             apply_fns = {"genre": genre_apply.apply_decisions, "mood": mood_apply.apply_decisions}
@@ -403,7 +448,7 @@ def build_ui() -> None:
                 # unreachable) - without this, that exception would just
                 # die silently server-side and nothing would ever tell
                 # you Save Decisions didn't actually do anything.
-                ui.notify(f"Save failed: {e}", type="negative")
+                notify(f"Save failed: {e}", type="negative")
                 return
 
             # Count unique tracks, not len(entries) summed across kinds -
@@ -419,7 +464,7 @@ def build_ui() -> None:
             if failed:
                 names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed)
                 msg += f" - failed to create: {names}"
-            ui.notify(msg, type="positive" if not failed else "warning")
+            notify(msg, type="positive" if not failed else "warning")
 
             # Drop whatever was actually written from the in-memory
             # plans - otherwise those rows sit there still checked, the
@@ -452,12 +497,12 @@ def build_ui() -> None:
         include_genre = genre_enabled_checkbox.value
         include_mood = mood_enabled_checkbox.value
         if not include_genre and not include_mood:
-            ui.notify("Turn on Genre/Subgenre and/or Mood/Theme before generating", type="warning")
+            notify("Turn on Genre/Subgenre and/or Mood/Theme before generating", type="warning")
             return
 
         enabled_sources = {name for name, cb in source_checkboxes.items() if cb.value}
         if include_genre and not enabled_sources:
-            ui.notify(
+            notify(
                 "Turn at least one Genre/Subgenre source back on, or turn off Genre/Subgenre",
                 type="warning",
             )
@@ -533,7 +578,7 @@ def build_ui() -> None:
                 if new_genre_plan.get("stopped_early"):
                     stopped = True
             except Exception as e:
-                ui.notify(f"Genre/Subgenre plan generation failed: {e}", type="negative")
+                notify(f"Genre/Subgenre plan generation failed: {e}", type="negative")
                 any_failed = True
 
         if include_mood:
@@ -556,7 +601,7 @@ def build_ui() -> None:
                     if new_mood_plan.get("stopped_early"):
                         stopped = True
                 except Exception as e:
-                    ui.notify(f"Mood/Theme plan generation failed: {e}", type="negative")
+                    notify(f"Mood/Theme plan generation failed: {e}", type="negative")
                     any_failed = True
 
         progress_bar.visible = False
@@ -580,7 +625,7 @@ def build_ui() -> None:
                 f"{len(mood_counts['create'])} new-tag"
             )
         summary = " | ".join(parts) if parts else "no plan generated"
-        ui.notify(
+        notify(
             f"{'Stopped early' if stopped else 'Plan ready'}: {summary} - nothing written yet, "
             f"review and click Save Decisions",
             type="negative" if any_failed else ("warning" if stopped else "positive"),
