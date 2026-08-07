@@ -39,6 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import lexicon_client
+import scan_progress
 import scoring
 from fetch import audio_model_mood
 
@@ -141,6 +142,7 @@ def generate_plan(
     on_status=None,
     on_track_planned=None,
     should_stop=None,
+    since_track_id: int | None = None,
 ) -> dict:
     """Runs the whole load -> fetch -> score pipeline in-process and
     writes the plan to disk. Used by both the CLI below and
@@ -150,6 +152,11 @@ def generate_plan(
     optionally capped by `limit`), "recent" (the `limit` most recently
     added tracks, defaulting to DEFAULT_RECENT_COUNT), or "incoming"
     (everything in Lexicon's Incoming bin, optionally capped).
+
+    since_track_id, if given, drops every track with id <= this value
+    before applying `limit` - see plan.py's own generate_plan() for the
+    full rationale (this is a verbatim copy of that mechanism, kept
+    duplicated for the same reason the rest of this file is).
 
     on_status(message), if given, is called for one-off progress lines.
     on_track_planned(i, total, track, result), if given, is called once
@@ -190,16 +197,23 @@ def generate_plan(
         status(f"  {len(tracks)} incoming track(s)")
     else:
         tracks = lexicon_client.fetch_library()
+        # Explicit ascending-id order, not Lexicon's implicit "database
+        # order" - since_track_id only means "the next N tracks after
+        # this one" if every run agrees what "next" means.
+        tracks.sort(key=lambda t: t["id"])
         status(f"  {len(tracks)} tracks")
 
     if track_id is not None:
         tracks = [t for t in tracks if t["id"] == track_id]
+    elif since_track_id is not None:
+        tracks = [t for t in tracks if t["id"] > since_track_id]
     if limit:
         tracks = tracks[:limit]
 
     status(f"\nplanning {len(tracks)} track(s)...\n")
     auto_all, review_all, create_all = [], [], []
     stopped = False
+    last_scanned_track_id = None
     for i, track in enumerate(tracks, 1):
         if should_stop and should_stop():
             stopped = True
@@ -209,6 +223,7 @@ def generate_plan(
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
         create_all.extend(result["create"])
+        last_scanned_track_id = track["id"]
         if on_track_planned:
             on_track_planned(i, len(tracks), track, result)
 
@@ -219,6 +234,9 @@ def generate_plan(
         "auto": auto_all,
         "review": review_all,
         "create": create_all,
+        # See plan.py's own generate_plan() - same "advance only as far
+        # as actually finished" rationale.
+        "last_scanned_track_id": last_scanned_track_id,
     }
     path = Path(out_path) if out_path else PLAN_FILE
     path.write_text(json.dumps(plan, indent=1))
@@ -242,7 +260,22 @@ def main():
              "'incoming' = everything in Lexicon's Incoming bin",
     )
     p.add_argument("--out", default=None, help="alternate plan output path")
+    p.add_argument(
+        "--resume", action="store_true",
+        help="skip tracks a previous --mode all run already covered (see "
+             "scan_progress.py) and save how far this run gets, so the next "
+             "--resume run picks up after it; ignored for --mode recent/incoming",
+    )
+    p.add_argument(
+        "--reset-progress", action="store_true",
+        help="clear the saved --resume position for this action before running "
+             "(combine with --resume to start a fresh pass); does not touch tags "
+             "already applied to any track",
+    )
     args = p.parse_args()
+
+    if args.reset_progress:
+        scan_progress.reset("mood")
 
     def on_track_planned(i, total, track, result):
         print(f"[{i}/{total}] {track.get('artist')} - {track.get('title')}")
@@ -254,14 +287,20 @@ def main():
         for row in result["create"]:
             print(f"    CREATE  {row['tag']}  ({row['confidence']:.0%}) - new tag, needs review")
 
-    generate_plan(
+    since_track_id = scan_progress.get_cursor("mood") if args.resume and args.mode == "all" else None
+
+    plan = generate_plan(
         limit=args.limit,
         track_id=args.track_id,
         scan_mode=args.mode,
         out_path=args.out,
         on_status=print,
         on_track_planned=on_track_planned,
+        since_track_id=since_track_id,
     )
+
+    if args.resume and args.mode == "all":
+        scan_progress.advance("mood", plan.get("last_scanned_track_id"))
 
 
 if __name__ == "__main__":

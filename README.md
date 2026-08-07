@@ -81,6 +81,21 @@ track), so a **Stop** button aborts mid-run - it takes effect after
 the current track finishes, not instantly, and keeps whatever was
 already planned as a normal, smaller plan rather than discarding it.
 
+A capped **whole-library** run remembers where it left off
+(`scan_progress.py`), separately per action - a second 100-track run
+picks up at track 101 instead of re-covering the first 100, so working
+through a large backlog in batches makes real progress instead of
+looping over the same tracks. The review screen shows this as an "X of
+Y tracks scanned" caption with its own **Reset** button (confirmed
+before it takes effect) to deliberately start an action's whole-
+library scanning over from scratch - worth doing after a scoring
+change, for instance. Only "whole library" has a position like this to
+save; "recent" is already a moving window and "incoming" self-narrows
+as tracks leave that bin, so neither shows or needs one. Purely about
+which tracks get *scanned* - it's unrelated to, and doesn't change,
+the per-tag check every scan already does regardless (a candidate tag
+already applied to a track is always skipped).
+
 ### Genre/Subgenre fetch sources
 
 Queried independently per track, never merged blindly - and each one

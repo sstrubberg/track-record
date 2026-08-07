@@ -45,7 +45,13 @@ anything - "Apply Tags" is the only action that does:
    sequential phases (Genre first, then Mood), each with its own live
    per-track progress; "Stop" aborts after the current track and keeps
    whatever was already planned, skipping a not-yet-started second
-   phase entirely rather than starting it after a stop.
+   phase entirely rather than starting it after a stop. A capped
+   "whole library" run remembers where it left off, per action - a
+   caption under the scan controls reads "X of Y tracks scanned" once
+   a cursor exists, with its own "Reset" (confirmed first) to
+   deliberately start that action's whole-library scanning over.
+   Nothing to save or show for "recent"/"incoming" - see the top-level
+   README's "Choosing what to scan" for the full rationale.
 2. Every proposed tag lands in a grouped-by-track list - but a track
    with both genre and mood candidates doesn't dump them into one
    pile: its entry splits into a "Genre / Subgenre" sub-group and a

@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import lexicon_client
+import scan_progress
 import scoring
 from fetch import audio_model, discogs, musicbrainz
 
@@ -159,6 +160,7 @@ def generate_plan(
     on_status=None,
     on_track_planned=None,
     should_stop=None,
+    since_track_id: int | None = None,
 ) -> dict:
     """Runs the whole load -> fetch -> score pipeline in-process and
     writes the plan to disk. Used by both the CLI below and
@@ -175,6 +177,18 @@ def generate_plan(
     SOURCES, same as always. An empty set is allowed (every track plans
     to nothing) rather than rejected - the caller's problem to guard
     against if that's not wanted, same as any other empty scan.
+
+    since_track_id, if given, drops every track with id <= this value
+    before applying `limit` - the mechanism behind resuming a batched
+    whole-library scan (see scan_progress.py) without this function
+    knowing anything about that module itself; a caller working through
+    a big library 100 tracks at a time passes the id the last run
+    finished at, and gets the next 100 instead of the same first 100
+    again. Ignored when `track_id` is also given - an explicit single-
+    track lookup always runs regardless of scan position. Meaningful
+    for any scan_mode, but only worth using with "all" in practice -
+    "recent"/"incoming" are naturally-scoped pools with no analogous
+    idea of a saved position.
 
     on_status(message), if given, is called for one-off progress lines
     (tag index size, library size, ...). on_track_planned(i, total,
@@ -220,16 +234,25 @@ def generate_plan(
         status(f"  {len(tracks)} incoming track(s)")
     else:
         tracks = lexicon_client.fetch_library()
+        # Explicit ascending-id order rather than relying on Lexicon's
+        # implicit "database order" (which the caller can't rely on
+        # staying consistent) - since_track_id only means "the next N
+        # tracks after this one" if every run agrees on what "next"
+        # means.
+        tracks.sort(key=lambda t: t["id"])
         status(f"  {len(tracks)} tracks")
 
     if track_id is not None:
         tracks = [t for t in tracks if t["id"] == track_id]
+    elif since_track_id is not None:
+        tracks = [t for t in tracks if t["id"] > since_track_id]
     if limit:
         tracks = tracks[:limit]
 
     status(f"\nplanning {len(tracks)} track(s)...\n")
     auto_all, review_all, create_all = [], [], []
     stopped = False
+    last_scanned_track_id = None
     for i, track in enumerate(tracks, 1):
         if should_stop and should_stop():
             stopped = True
@@ -239,6 +262,7 @@ def generate_plan(
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
         create_all.extend(result["create"])
+        last_scanned_track_id = track["id"]
         if on_track_planned:
             on_track_planned(i, len(tracks), track, result)
 
@@ -249,6 +273,13 @@ def generate_plan(
         "auto": auto_all,
         "review": review_all,
         "create": create_all,
+        # Highest id actually finished this run (None if nothing was) -
+        # scan_progress.py's cursor advances to exactly this, not to
+        # wherever the run merely intended to reach, so a stop partway
+        # through still leaves the untouched remainder to show up next
+        # time. Only meaningful for scan_mode "all"; harmless either way
+        # for "recent"/"incoming" since nothing consumes it there.
+        "last_scanned_track_id": last_scanned_track_id,
     }
     path = Path(out_path) if out_path else PLAN_FILE
     path.write_text(json.dumps(plan, indent=1))
@@ -277,7 +308,22 @@ def main():
              f"(default: all of them)",
     )
     p.add_argument("--out", default=None, help="alternate plan output path")
+    p.add_argument(
+        "--resume", action="store_true",
+        help="skip tracks a previous --mode all run already covered (see "
+             "scan_progress.py) and save how far this run gets, so the next "
+             "--resume run picks up after it; ignored for --mode recent/incoming",
+    )
+    p.add_argument(
+        "--reset-progress", action="store_true",
+        help="clear the saved --resume position for this action before running "
+             "(combine with --resume to start a fresh pass); does not touch tags "
+             "already applied to any track",
+    )
     args = p.parse_args()
+
+    if args.reset_progress:
+        scan_progress.reset("genre")
 
     enabled_sources = set(args.sources.split(",")) if args.sources else None
 
@@ -291,7 +337,9 @@ def main():
         for row in result["create"]:
             print(f"    CREATE  {row['tag']}  ({row['confidence']:.0%}) - new tag, needs review")
 
-    generate_plan(
+    since_track_id = scan_progress.get_cursor("genre") if args.resume and args.mode == "all" else None
+
+    plan = generate_plan(
         limit=args.limit,
         track_id=args.track_id,
         scan_mode=args.mode,
@@ -299,7 +347,11 @@ def main():
         out_path=args.out,
         on_status=print,
         on_track_planned=on_track_planned,
+        since_track_id=since_track_id,
     )
+
+    if args.resume and args.mode == "all":
+        scan_progress.advance("genre", plan.get("last_scanned_track_id"))
 
 
 if __name__ == "__main__":

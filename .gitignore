@@ -17,6 +17,7 @@ companion-app/**/*_cache.json
 companion-app/**/*_plan.csv
 companion-app/**/*_plan.json
 companion-app/**/*_applied_log.json
+companion-app/scan_progress.json
 logs/
 
 # Downloaded model weights (~330 MB) - fetched on first use, not committed

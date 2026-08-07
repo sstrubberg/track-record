@@ -41,6 +41,15 @@ Layout:
   whatever was already planned. Generating a new plan while the
   current one has checked-but-unsaved rows asks for confirmation
   first, rather than silently discarding them.
+- "Whole library" scans remember where they left off (see
+  scan_progress.py) - a capped run picks up after the last track a
+  previous run actually finished, rather than the same first N tracks
+  every time, so working through a big library in batches makes real
+  progress. A caption under the scan controls shows "X of Y tracks
+  scanned" per enabled action, with a "Reset" button (confirmed first)
+  to deliberately start that action's whole-library scanning over -
+  e.g. after a scoring change worth re-covering old ground for.
+  "Recent"/"Incoming" have no such position to save or show.
 - Genre/Subgenre and Mood/Theme run as two sequential phases when both
   are selected (genre first, then mood) - not interleaved per track -
   each with its own live per-track progress. Stopping during the first
@@ -85,6 +94,7 @@ import lexicon_client
 import mood_apply
 import mood_plan
 import plan as genre_plan_module
+import scan_progress
 import scoring
 
 GENRE_PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
@@ -163,6 +173,14 @@ def build_ui() -> None:
         "category_choice": {},
         "page": 1,
         "page_size": DEFAULT_PAGE_SIZE,
+        # Cached whole-library track list, used only to turn a saved
+        # scan_progress cursor (a track id) into an "X of Y tracks
+        # scanned" count for the caption below - None until first
+        # needed, then kept for the rest of the session rather than
+        # re-fetched on every render. Cleared after a whole-library
+        # scan actually runs, since that's the one time the count or
+        # the cursor could plausibly have changed.
+        "library_snapshot": None,
     }
     progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
@@ -233,12 +251,19 @@ def build_ui() -> None:
         stop_button.visible = False
 
     scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
-    scan_mode_select.on_value_change(lambda e: scan_mode_hint.set_text(scan_mode_hints[e.value]))
+
+    def on_scan_mode_change(e) -> None:
+        scan_mode_hint.set_text(scan_mode_hints[e.value])
+        scan_progress_caption.refresh()
+
+    scan_mode_select.on_value_change(on_scan_mode_change)
 
     with ui.row().classes("items-center gap-4"):
         ui.label("Tag with:").classes("text-sm text-gray-500")
         genre_enabled_checkbox = ui.checkbox("Genre / Subgenre", value=True).props("dense")
         mood_enabled_checkbox = ui.checkbox("Mood / Theme", value=True).props("dense")
+        genre_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
+        mood_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
 
     # Which Genre/Subgenre fetch sources actually run - unchecking one
     # skips it entirely for the run, not just down-weights it (that's
@@ -260,6 +285,66 @@ def build_ui() -> None:
             for name, label in SOURCE_LABELS.items()
         }
     source_row.bind_visibility_from(genre_enabled_checkbox, "value")
+
+    def get_library_snapshot() -> list[dict]:
+        if state["library_snapshot"] is None:
+            state["library_snapshot"] = lexicon_client.fetch_library()
+        return state["library_snapshot"]
+
+    async def reset_scan_progress(action: str, label: str) -> None:
+        with ui.dialog() as confirm_dialog, ui.card():
+            ui.label(
+                f"Reset scan progress for {label}? The next whole-library scan "
+                f"will start over from the beginning instead of continuing where "
+                f"it left off. Tags already applied are untouched - nothing gets "
+                f"un-tagged."
+            )
+            with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
+                ui.button(
+                    "Reset", color="negative",
+                    on_click=lambda: confirm_dialog.submit("continue"),
+                )
+        if await confirm_dialog != "continue":
+            return
+        scan_progress.reset(action)
+        notify(f"Scan progress reset for {label} - the next whole-library scan starts from the beginning")
+        scan_progress_caption.refresh()
+
+    # Only meaningful for "Whole library" - "Most recently added" is
+    # already a moving window and "Incoming" self-narrows as tracks
+    # leave that bin, so neither has an analogous saved position (see
+    # scan_progress.py). Shown per enabled action, since Genre/Subgenre
+    # and Mood/Theme scans track their own separate positions and a DJ
+    # might only be running one of them right now.
+    @ui.refreshable
+    def scan_progress_caption() -> None:
+        if scan_mode_select.value != "all":
+            return
+        actions = [
+            ("genre", "Genre/Subgenre", genre_enabled_checkbox.value),
+            ("mood", "Mood/Theme", mood_enabled_checkbox.value),
+        ]
+        if not any(enabled for _, _, enabled in actions):
+            return
+        snapshot = get_library_snapshot()
+        total = len(snapshot)
+        for action, label, enabled in actions:
+            if not enabled:
+                continue
+            cursor = scan_progress.get_cursor(action)
+            scanned = sum(1 for t in snapshot if t["id"] <= cursor) if cursor is not None else 0
+            caught_up = " (fully caught up)" if total and scanned >= total else ""
+            with ui.row().classes("items-center gap-2"):
+                ui.label(f"{label}: {scanned:,} of {total:,} tracks scanned{caught_up}").classes(
+                    "text-xs text-gray-500"
+                )
+                if cursor is not None:
+                    ui.button(
+                        "Reset", on_click=lambda a=action, l=label: reset_scan_progress(a, l)
+                    ).props("flat dense size=sm color=grey")
+
+    scan_progress_caption()
 
     progress_label = ui.label("").classes("text-gray-500")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
@@ -663,6 +748,12 @@ def build_ui() -> None:
         any_failed = False
         stopped = False
 
+        # Only "Whole library" has a saved position to resume from at
+        # all (see scan_progress.py) - None here means "start from the
+        # beginning", same as before this existed, for "recent"/
+        # "incoming" or a first-ever whole-library run.
+        resuming = scan_mode == "all"
+
         if include_genre:
             progress.update(phase="Genre", current=0, total=0, rendered=-1)
             try:
@@ -673,9 +764,15 @@ def build_ui() -> None:
                     enabled_sources=enabled_sources,
                     on_track_planned=on_track_planned,
                     should_stop=stop_event.is_set,
+                    since_track_id=scan_progress.get_cursor("genre") if resuming else None,
                 )
                 if new_genre_plan.get("stopped_early"):
                     stopped = True
+                if resuming:
+                    # Advances only as far as this run actually got -
+                    # last_scanned_track_id is None (a no-op) if a stop
+                    # landed before the first track finished.
+                    scan_progress.advance("genre", new_genre_plan.get("last_scanned_track_id"))
             except Exception as e:
                 notify(f"Genre/Subgenre plan generation failed: {e}", type="negative")
                 any_failed = True
@@ -696,9 +793,12 @@ def build_ui() -> None:
                         scan_mode=scan_mode,
                         on_track_planned=on_track_planned,
                         should_stop=stop_event.is_set,
+                        since_track_id=scan_progress.get_cursor("mood") if resuming else None,
                     )
                     if new_mood_plan.get("stopped_early"):
                         stopped = True
+                    if resuming:
+                        scan_progress.advance("mood", new_mood_plan.get("last_scanned_track_id"))
                 except Exception as e:
                     notify(f"Mood/Theme plan generation failed: {e}", type="negative")
                     any_failed = True
@@ -710,6 +810,12 @@ def build_ui() -> None:
         state["genre_plan"] = new_genre_plan
         state["mood_plan"] = new_mood_plan
         review_section.refresh()
+        if resuming:
+            # The cursor (and possibly the library itself) just moved -
+            # drop the cached snapshot so the progress caption re-fetches
+            # instead of showing a stale count/position.
+            state["library_snapshot"] = None
+            scan_progress_caption.refresh()
         genre_counts = new_genre_plan if include_genre else None
         mood_counts = new_mood_plan if include_mood else None
         parts = []
