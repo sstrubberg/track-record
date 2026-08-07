@@ -11,6 +11,7 @@ confidence = 1 - Pi(1 - weight_i * score_i)   for each source i that found the t
 
 from __future__ import annotations
 
+import re
 from functools import reduce
 from pathlib import Path
 from typing import Iterable
@@ -18,6 +19,29 @@ from typing import Iterable
 import yaml
 
 DEFAULT_WEIGHTS_PATH = Path(__file__).parent / "config" / "source_weights.yaml"
+
+# Sources that use the actual Discogs-400 taxonomy (discogs.py's own
+# API results, and audio_model.py's discogs-maest classes, which are
+# trained on that same taxonomy) - preferred as the displayed spelling
+# when a tag also came from a source that doesn't share it. Concretely:
+# MusicBrainz's genre/tag data is lowercase folksonomy text ("hip hop",
+# "dance-pop") where Discogs' is Title Case ("Hip Hop", "Dance-pop") -
+# without normalizing, group_by_tag() below would treat those as two
+# unrelated tags, both losing the noisy-OR confidence boost the other
+# should have given it, not just showing as an odd-looking duplicate.
+_PREFERRED_TAG_SOURCES = ("discogs", "audio_model")
+
+# Same case/hyphen/whitespace-insensitive comparison lexicon_client.py's
+# _normalize_label() already applies when matching a fetched tag
+# against the Lexicon library's own tags - duplicated here rather than
+# imported, since it's two lines and each module's own copy stays
+# simple to read without a cross-module coupling for something this
+# small.
+_NORMALIZE_RE = re.compile(r"[\s\-]+")
+
+
+def _normalize_tag(s: str) -> str:
+    return _NORMALIZE_RE.sub(" ", s.strip().lower())
 
 
 def load_weights(path: Path = DEFAULT_WEIGHTS_PATH) -> dict:
@@ -41,9 +65,26 @@ def score_tag(candidates: Iterable[dict], weights: dict) -> float:
 
 
 def group_by_tag(candidates: Iterable[dict]) -> dict[str, list[dict]]:
-    grouped: dict[str, list[dict]] = {}
+    """Groups candidates whose tags are the same aside from case/hyphen/
+    whitespace differences into one entry - a Discogs "Hip Hop" and a
+    MusicBrainz "hip hop" for the same track should combine into one
+    higher-confidence result via noisy-OR, not sit side by side as two
+    separate, weaker ones that both undercount how many sources
+    actually agree. The merged group's displayed tag string prefers
+    whichever candidate came from a _PREFERRED_TAG_SOURCES source (the
+    actual Discogs-400 taxonomy this project is otherwise built
+    around) over other sources' own casing, falling back to whichever
+    candidate was seen first if none of them did.
+    """
+    by_key: dict[str, list[dict]] = {}
     for c in candidates:
-        grouped.setdefault(c["tag"], []).append(c)
+        by_key.setdefault(_normalize_tag(c["tag"]), []).append(c)
+
+    grouped: dict[str, list[dict]] = {}
+    for members in by_key.values():
+        preferred = next((m for m in members if m["source"] in _PREFERRED_TAG_SOURCES), None)
+        display_tag = (preferred or members[0])["tag"]
+        grouped[display_tag] = members
     return grouped
 
 
