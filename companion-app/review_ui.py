@@ -141,10 +141,28 @@ ROW_GRID = (
 )
 
 
+PAGE_SIZE_OPTIONS = [25, 50, 100, 200]
+DEFAULT_PAGE_SIZE = 50
+
+
 def build_ui() -> None:
     state = {
         "genre_plan": load_plan(GENRE_PLAN_FILE),
         "mood_plan": load_plan(MOOD_PLAN_FILE),
+        # Checked/category-choice state used to live entirely in the
+        # live ui.checkbox/ui.select objects themselves, read directly
+        # at save time - fine when every row was always on screen, but
+        # pagination (below) only keeps the current page's rows
+        # rendered at all. These two dicts, keyed by (track_id, kind,
+        # tag), are the actual source of truth now; checkboxes/selects
+        # just read their initial value from here and write back on
+        # change, so a check made on page 1 survives navigating to
+        # page 4 and back, even though the page-1 checkbox itself gets
+        # torn down and rebuilt in between.
+        "checked": {},
+        "category_choice": {},
+        "page": 1,
+        "page_size": DEFAULT_PAGE_SIZE,
     }
     progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
@@ -292,7 +310,6 @@ def build_ui() -> None:
         mood_plan_ = state["mood_plan"]
         if not genre_plan and not mood_plan_:
             ui.label("No plan yet - click Generate Plan above.").classes("text-gray-500")
-            state["entries"] = []
             return
 
         categories = lexicon_client.fetch_categories()
@@ -303,11 +320,35 @@ def build_ui() -> None:
         }
 
         tracks = group_by_track(genre_plan, mood_plan_)
-        entries: list[tuple[dict, ui.checkbox, ui.select | None, str]] = []
+
+        # Ensure every row currently in the plan has a checked-default
+        # (pre-checked for auto rows, unchecked otherwise) regardless of
+        # which page it'll land on - a row on page 4 that the DJ never
+        # scrolls to still needs to count as pre-checked for Save
+        # Decisions, the same as it would if pagination didn't exist.
+        # setdefault only writes a value the first time a key is seen,
+        # so an already-answered checkbox (checked, unchecked, or a
+        # category picked) is never reset back to its default just
+        # because the page holding it got rebuilt. Also prunes both
+        # dicts down to keys that still exist - a full regenerate or a
+        # completed save both remove rows, and their leftover checked/
+        # category state should go with them rather than linger forever.
+        valid_keys = set()
+        for track_id, info in tracks.items():
+            for row in info["rows"]:
+                key = (track_id, row["kind"], row["tag"])
+                valid_keys.add(key)
+                state["checked"].setdefault(key, row.get("is_auto", False))
+        for d in (state["checked"], state["category_choice"]):
+            for key in list(d):
+                if key not in valid_keys:
+                    del d[key]
 
         def toggle_all(e) -> None:
-            for _, cb, _, _ in entries:
-                cb.value = e.value
+            for track_id, info in tracks.items():
+                for row in info["rows"]:
+                    state["checked"][(track_id, row["kind"], row["tag"])] = e.value
+            review_section.refresh()
 
         with ui.row().classes("items-center gap-2"):
             ui.checkbox("Select all", value=False, on_change=toggle_all)
@@ -315,25 +356,61 @@ def build_ui() -> None:
                 "text-gray-500"
             )
 
+        # Pagination - at real-library scale (thousands of tracks) every
+        # track's expansion showing up at once, even collapsed, was
+        # measured at 500K+ DOM nodes and 20+ seconds just to build the
+        # element tree for 2,000 synthetic tracks before a page-size
+        # limit existed. Slicing to one page's worth of track shells is
+        # the actual fix for that; row content is also deferred until a
+        # track is opened (see build_track_content below) so even a full
+        # page of collapsed tracks stays cheap.
+        sorted_tracks = sorted(tracks.items(), key=lambda kv: ((kv[1]["artist"] or ""), kv[1]["title"] or ""))
+        page_size = state["page_size"]
+        total_pages = max(1, -(-len(sorted_tracks) // page_size))  # ceil div
+        state["page"] = max(1, min(state["page"], total_pages))
+        start = (state["page"] - 1) * page_size
+        page_tracks = sorted_tracks[start:start + page_size]
+
+        with ui.row().classes("items-center gap-3"):
+            def on_page_size_change(e) -> None:
+                state["page_size"] = e.value
+                state["page"] = 1
+                review_section.refresh()
+
+            ui.select(PAGE_SIZE_OPTIONS, value=page_size, label="tracks per page").props("dense").classes(
+                "w-32"
+            ).on_value_change(on_page_size_change)
+
+            if total_pages > 1:
+                def on_page_change(e) -> None:
+                    state["page"] = e.value
+                    review_section.refresh()
+
+                ui.pagination(1, total_pages, value=state["page"], direction_links=True, on_change=on_page_change)
+                ui.label(f"tracks {start + 1}-{min(start + page_size, len(sorted_tracks))} of {len(sorted_tracks)}").classes(
+                    "text-xs text-gray-500"
+                )
+
         def render_rows(rows: list[dict], select_all_label: str) -> None:
             """One kind's sub-group within a track's expansion - its
             own heading, its own "select all", its own confidence-
             sorted rows. Shared by both kinds; only the row data and
             label differ."""
             rows = sorted(rows, key=lambda r: -r["confidence"])
-            sub_checkboxes: list[ui.checkbox] = []
+            kind = rows[0]["kind"]
 
-            def toggle_sub(e, cbs=sub_checkboxes) -> None:
-                for cb in cbs:
-                    cb.value = e.value
+            def toggle_sub(e, rows=rows, kind=kind) -> None:
+                for row in rows:
+                    state["checked"][(row["track_id"], kind, row["tag"])] = e.value
+                review_section.refresh()
 
-            ui.label(KIND_LABELS[rows[0]["kind"]]).classes("text-xs font-bold text-gray-500 uppercase mt-2")
+            ui.label(KIND_LABELS[kind]).classes("text-xs font-bold text-gray-500 uppercase mt-2")
             with ui.row().classes("items-center gap-2 px-2 py-1 mb-1 bg-gray-50 dark:bg-gray-800 rounded"):
                 ui.checkbox(select_all_label, value=False, on_change=toggle_sub).props("dense")
 
             for row in rows:
                 is_auto = row.get("is_auto", False)
-                kind = row["kind"]
+                key = (row["track_id"], kind, row["tag"])
                 with ui.element("div").style(ROW_GRID).classes(
                     "w-full px-2 py-2 border-b border-gray-100 dark:border-gray-800 "
                     "hover:bg-gray-50 dark:hover:bg-gray-800/60"
@@ -344,9 +421,13 @@ def build_ui() -> None:
                     # need an extra click on top of the one Save
                     # Decisions click everything else needs. Still just
                     # a checkbox: uncheck it like any other if you
-                    # disagree with this one.
-                    cb = ui.checkbox(value=is_auto).props("dense")
-                    sub_checkboxes.append(cb)
+                    # disagree with this one. Reads its initial value
+                    # from state["checked"] (already defaulted above)
+                    # and writes back on every change, rather than being
+                    # the source of truth itself - the checkbox object
+                    # doesn't survive a page turn, the dict does.
+                    cb = ui.checkbox(value=state["checked"][key]).props("dense")
+                    cb.on_value_change(lambda e, key=key: state["checked"].__setitem__(key, e.value))
 
                     label = row["tag"] + ("  · new" if row["is_new"] else "")
                     label_classes = "truncate cursor-pointer"
@@ -356,13 +437,14 @@ def build_ui() -> None:
                     tag_label.on("click", lambda e, cb=cb: setattr(cb, "value", not cb.value))
                     tag_label.tooltip("Click to toggle")
 
-                    select = None
                     if row["is_new"]:
+                        default_category = state["category_choice"].get(key, row.get("suggested_category_id"))
                         select = ui.select(
                             category_options,
-                            value=row.get("suggested_category_id"),
+                            value=default_category,
                             label="category",
                         ).props("dense outlined").classes("w-full")
+                        select.on_value_change(lambda e, key=key: state["category_choice"].__setitem__(key, e.value))
                     else:
                         ui.element("div")  # empty grid cell - keeps columns aligned
 
@@ -389,9 +471,7 @@ def build_ui() -> None:
                                 if src.get("url"):
                                     item.on("click", lambda url=src["url"]: ui.navigate.to(url, new_tab=True))
 
-                    entries.append((row, cb, select, kind))
-
-        for _, info in sorted(tracks.items(), key=lambda kv: ((kv[1]["artist"] or ""), kv[1]["title"] or "")):
+        for _, info in page_tracks:
             genre_rows = [r for r in info["rows"] if r["kind"] == "genre"]
             mood_rows = [r for r in info["rows"] if r["kind"] == "mood"]
             caption_bits = []
@@ -399,15 +479,32 @@ def build_ui() -> None:
                 caption_bits.append(f"{len(genre_rows)} genre")
             if mood_rows:
                 caption_bits.append(f"{len(mood_rows)} mood")
-            with ui.expansion(
-                f"{info['artist']} — {info['title']}", caption=" · ".join(caption_bits) + " candidate(s)"
-            ).classes("w-full border border-gray-200 dark:border-gray-700 rounded-lg mb-2"):
-                if genre_rows:
-                    render_rows(genre_rows, "Select all genre tags for this track")
-                if mood_rows:
-                    render_rows(mood_rows, "Select all mood tags for this track")
 
-        state["entries"] = entries  # so generate() can warn before discarding checked-but-unsaved rows
+            # Lazy render: a collapsed track only ever costs an
+            # expansion shell + one empty container (a couple of DOM
+            # nodes) - its actual candidate rows (the expensive part,
+            # ~7 elements each) are only built the first time it's
+            # opened, not for every track on the page whether you look
+            # at it or not. `built` guards against rebuilding on every
+            # subsequent open/close of the same track.
+            built = {"done": False}
+
+            def populate(container, genre_rows=genre_rows, mood_rows=mood_rows, built=built) -> None:
+                if built["done"]:
+                    return
+                built["done"] = True
+                with container:
+                    if genre_rows:
+                        render_rows(genre_rows, "Select all genre tags for this track")
+                    if mood_rows:
+                        render_rows(mood_rows, "Select all mood tags for this track")
+
+            expansion = ui.expansion(
+                f"{info['artist']} — {info['title']}", caption=" · ".join(caption_bits) + " candidate(s)"
+            ).classes("w-full border border-gray-200 dark:border-gray-700 rounded-lg mb-2")
+            with expansion:
+                content = ui.column().classes("w-full gap-0")
+            expansion.on_value_change(lambda e, c=content, p=populate: p(c) if e.value else None)
 
         async def save():
             approved = {
@@ -415,17 +512,19 @@ def build_ui() -> None:
                 "mood": {"review": [], "create": []},
             }
             skipped_no_category = 0
-            for r, cb, select, kind in entries:
-                if not cb.value:
-                    continue
-                if r["is_new"]:
-                    category_id = select.value if select else None
-                    if category_id is None:
-                        skipped_no_category += 1
+            for track_id, info in tracks.items():
+                for row in info["rows"]:
+                    key = (track_id, row["kind"], row["tag"])
+                    if not state["checked"].get(key):
                         continue
-                    approved[kind]["create"].append({**r, "category_id": category_id})
-                else:
-                    approved[kind]["review"].append(r)
+                    if row["is_new"]:
+                        category_id = state["category_choice"].get(key, row.get("suggested_category_id"))
+                        if category_id is None:
+                            skipped_no_category += 1
+                            continue
+                        approved[row["kind"]]["create"].append({**row, "category_id": category_id})
+                    else:
+                        approved[row["kind"]]["review"].append(row)
 
             if not any(approved[k][b] for k in ("genre", "mood") for b in ("review", "create")):
                 msg = "Nothing checked - nothing to save"
@@ -508,7 +607,7 @@ def build_ui() -> None:
             )
             return
 
-        checked = sum(1 for _, cb, _, _ in state.get("entries", []) if cb.value)
+        checked = sum(1 for v in state["checked"].values() if v)
         if checked:
             with ui.dialog() as confirm_dialog, ui.card():
                 ui.label(
