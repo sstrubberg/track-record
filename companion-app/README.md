@@ -60,6 +60,14 @@ anything - "Save Decisions" is the only action that does:
    model to call from audio alone (see the top-level README for the
    real numbers), so most of what shows up there will need your own
    judgment rather than clearing the auto-include bar on its own.
+   A large plan (thousands of tracks) is paginated - 50 tracks per
+   page by default, configurable to 25/100/200 via the "tracks per
+   page" picker above the list - and each track's rows aren't built
+   until you actually expand it, so the screen stays responsive
+   regardless of plan size. "Select all" and Save Decisions both act
+   across the *whole* plan, not just the visible page, so checking a
+   tag on page 1 and a different one on page 3 both make it into the
+   same save.
 3. Check what you agree with (or leave the pre-checked ones as they
    are) and hit **"Save Decisions"** - the one action that writes to
    Lexicon, splitting whatever's checked by kind under the hood and

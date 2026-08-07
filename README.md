@@ -218,6 +218,18 @@ just a checkbox, uncheck it like any other if you disagree. A global
 through a large plan; all of them just drive the same per-row
 checkboxes "Save Decisions" reads.
 
+A plan spanning thousands of tracks is paginated - 50 tracks per page
+by default, configurable to 25/100/200 in the UI - with each track's
+rows built only the first time it's actually expanded, rather than all
+at once up front. Measured against a synthetic 2,000-track plan, that
+took the initial page from ~521,000 DOM nodes / 20.6s to build down to
+937 nodes / 0.73s. Checked/category state lives in memory keyed by
+track rather than in the on-page checkbox widgets themselves, so it
+survives turning the page - checking a tag on page 1 and a different
+one on page 3 both land in the same "Save Decisions" click, and both
+"select all" controls act on the whole plan, not just the visible
+page.
+
 A row proposing a tag that doesn't exist in the library yet also gets
 a category picker, defaulting to that action's own `new_tag_category`
 config if that resolves to a real category - always changeable, and
