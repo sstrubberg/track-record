@@ -76,10 +76,13 @@ anything - "Apply Tags" is the only action that does:
    tag on page 1 and a different one on page 3 both make it into the
    same Apply Tags click. Different DJ edits of the same song (e.g.
    "(Intro Clean)" / "(Quick Hit Clean)") are detected automatically -
-   checking a Genre/Subgenre tag on one also checks it on any sibling
-   edit that independently proposed the same tag, so you're not
-   re-deciding the same genre once per edit. Mood/Theme is deliberately
-   not synced this way, since real testing found mood genuinely differs
+   a "Copy checked genre tags to '\<sibling title>'" button appears next
+   to a track's Genre/Subgenre "select all" when one's found. It's a
+   one-time copy, not a live link: click it after checking tags on one
+   edit to check the same tags on the named sibling(s), only where they
+   already proposed that exact tag too - nothing stays bound
+   afterward, so unchecking something later never cascades. Mood/Theme
+   has no such button, since real testing found mood genuinely differs
    between edits in a way genre doesn't; see the top-level README's
    "Review" section for the full rationale.
 3. Check what you agree with (or leave the pre-checked ones as they

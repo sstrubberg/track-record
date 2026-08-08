@@ -278,21 +278,28 @@ potentially both in one click - then reports one combined result.
 
 Different DJ edits of the same song ("Promiscuous (Intro Clean)" /
 "Promiscuous (Quick Hit Clean)") show up as separate tracks - separate
-audio files, separate Lexicon track_ids - but checking a Genre/
-Subgenre tag on one now also checks that same tag on any sibling
-edit(s) of the same song, wherever that sibling independently proposed
-it too. Never invents a candidate a sibling never actually had - only
-propagates a decision you already made across tracks that found the
-same evidence on their own, so working through a library full of
-multi-edit songs doesn't mean re-deciding the same genre once per
-edit, or risking forgetting one. Mood/Theme is deliberately not synced
-this way: testing on two real edits of the same song found genre
-stayed consistent between them while mood-adjacent tags genuinely
-differed (a spoken intro on one edit reading as "Ballad"/"Vocal" to
-the audio model) - mood is edit-sensitive in a way genre isn't, so
-syncing it the same way would paper over a real difference rather than
-remove busywork. A track with a detected sibling says so in its
-caption, so this never happens silently.
+audio files, separate Lexicon track_ids, detected automatically. A
+track with a detected sibling gets a "Copy checked genre tags to
+'\<sibling title>'" button next to its Genre/Subgenre "select all" -
+check whatever tags you agree with, click it, and the same tags get
+checked on the named sibling(s) too, but only where that sibling's own
+audio/catalog lookup already proposed that exact tag as a candidate,
+never inventing one it didn't earn. A one-time copy, not a live link -
+nothing stays bound afterward, so unchecking something on either track
+later never cascades anywhere, and the button always names exactly
+which edit(s) it's about to touch. (An earlier version auto-synced
+every check bidirectionally and live between siblings; dropped after
+real use found two problems with it - no visibility into which edits a
+track was actually linked to beyond a bare count, and no way to let
+one edit genuinely differ without the live link fighting back. Naming
+the sibling explicitly and making the copy a single deliberate action
+fixes both, for less code than the live-binding version needed.)
+Mood/Theme has no such button at all: testing on two real edits of the
+same song found genre stayed consistent between them while
+mood-adjacent tags genuinely differed (a spoken intro on one edit
+reading as "Ballad"/"Vocal" to the audio model) - mood is
+edit-sensitive in a way genre isn't, so treating it the same way would
+paper over a real difference rather than remove busywork.
 
 Generating a new plan while the current one has checked-but-unsaved
 rows asks for confirmation first, rather than silently discarding

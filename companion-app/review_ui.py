@@ -74,19 +74,26 @@ Layout:
 - Source, per-source note, and links live behind a `⋮` overflow menu.
 - Different DJ edits of the same song (e.g. "Promiscuous (Intro
   Clean)" / "Promiscuous (Quick Hit Clean)") show up as separate
-  tracks - separate audio files, separate track_ids in Lexicon - but
-  checking a Genre/Subgenre tag on one now also checks that same tag
-  on any sibling edit(s) of the same song, wherever that sibling
-  independently proposed it too (see find_sibling_edits()). Never
-  invents a candidate a sibling never actually had - this only
-  propagates a decision across tracks that already found the same
-  evidence, not asserting something new on a track's behalf. Mood/
-  Theme is deliberately NOT synced this way: real testing on two edits
-  of the same song found genre stayed consistent between them while
-  mood-adjacent tags genuinely differed (a spoken intro on one edit
-  reading as "Ballad"/"Vocal") - mood is edit-sensitive in a way genre
-  isn't. A synced track's caption says so explicitly, so a DJ isn't
-  surprised the first time a sibling row changes on its own.
+  tracks - separate audio files, separate track_ids in Lexicon
+  (detected via find_sibling_edits()). A track with a detected sibling
+  gets a "Copy checked genre tags to '<sibling title>'" button next to
+  its Genre/Subgenre "select all": check whatever tags you agree with
+  on one edit, click it, and the same tags get checked on the named
+  sibling(s) too - but only where that sibling's own audio/catalog
+  lookup already proposed that exact tag as a candidate, never
+  inventing one it didn't earn. A one-time copy, not a live link -
+  nothing stays bound afterward, so unchecking something on either
+  track later never cascades anywhere. (An earlier version auto-synced
+  every check bidirectionally and live; dropped after real use turned
+  up two problems with it - no visibility into which edits a track was
+  actually linked to beyond a bare count, and no way to let one edit
+  genuinely differ without the live link fighting you. The button
+  names the sibling explicitly and never re-asserts itself, which
+  fixes both.) Mood/Theme has no such button at all: real testing on
+  two edits of the same song found genre stayed consistent between
+  them while mood-adjacent tags genuinely differed (a spoken intro on
+  one edit reading as "Ballad"/"Vocal") - mood is edit-sensitive in a
+  way genre isn't.
 
 Each action's own apply_auto() / `python plan.py` (or `mood_plan.py`)
 + `python apply.py` (or `mood_apply.py`) CLI path still applies a
@@ -524,24 +531,22 @@ def build_ui() -> None:
         # testing on two edits of the same song found genre stayed
         # essentially consistent between them, while mood-adjacent tags
         # (a spoken intro reading as "Ballad"/"Vocal") genuinely
-        # differed - mood is edit-sensitive in a way genre isn't, so
-        # syncing it the same way would paper over a real difference
-        # rather than remove busywork.
+        # differed - mood is edit-sensitive in a way genre isn't.
+        #
+        # Deliberately NOT a live binding - an earlier version of this
+        # auto-mirrored every check/uncheck bidirectionally between
+        # siblings, which turned out to have two real problems in
+        # practice: no visibility into which edits a track was actually
+        # linked to beyond a bare count, and no way to let one edit
+        # genuinely differ from its sibling without the live link
+        # fighting you. render_rows() below instead shows each
+        # sibling's real title and offers a one-time "Copy checked
+        # genre tags to..." action - copies whatever's checked right
+        # now onto the sibling(s) once, same "only where the sibling
+        # already proposed it as a candidate" rule as before, but
+        # nothing stays linked afterward. Unchecking something later
+        # never cascades anywhere.
         siblings_by_track = find_sibling_edits(tracks)
-
-        def propagate_genre_to_siblings(track_id: int, tag: str, value: bool) -> None:
-            """Mirror a Genre/Subgenre check/uncheck onto the identical
-            tag on this track's sibling edits - but ONLY where that
-            sibling's own audio/catalog lookup already proposed that
-            exact tag as a candidate (i.e. it's already in valid_keys).
-            Never invents a candidate a sibling never actually earned;
-            this is purely propagating a decision you already made
-            about the song across tracks that independently found the
-            same evidence for it, not asserting something new."""
-            for sibling_id in siblings_by_track.get(track_id, ()):
-                sibling_key = (sibling_id, "genre", tag)
-                if sibling_key in valid_keys:
-                    state["checked"][sibling_key] = value
 
         def toggle_all(e) -> None:
             for track_id, info in tracks.items():
@@ -609,17 +614,64 @@ def build_ui() -> None:
             label differ."""
             rows = sorted(rows, key=lambda r: -r["confidence"])
             kind = rows[0]["kind"]
+            track_id = rows[0]["track_id"]
 
             def toggle_sub(e, rows=rows, kind=kind) -> None:
                 for row in rows:
                     state["checked"][(row["track_id"], kind, row["tag"])] = e.value
-                    if kind == "genre":
-                        propagate_genre_to_siblings(row["track_id"], row["tag"], e.value)
                 review_section.refresh()
 
             ui.label(KIND_LABELS[kind]).classes("text-xs font-bold text-gray-500 uppercase mt-2")
             with ui.row().classes("items-center gap-2 px-2 py-1 mb-1 bg-gray-50 dark:bg-gray-800 rounded"):
                 ui.checkbox(select_all_label, value=False, on_change=toggle_sub).props("dense")
+
+                sibling_ids = siblings_by_track.get(track_id, ()) if kind == "genre" else ()
+                if sibling_ids:
+                    sibling_titles = [tracks[sid]["title"] for sid in sibling_ids]
+                    btn_label = (
+                        f"Copy checked genre tags to \"{sibling_titles[0]}\""
+                        if len(sibling_ids) == 1
+                        else f"Copy checked genre tags to {len(sibling_ids)} sibling edits"
+                    )
+
+                    def copy_to_siblings(sibling_ids=sibling_ids, track_id=track_id) -> None:
+                        checked_tags = [
+                            row["tag"] for row in rows
+                            if state["checked"].get((track_id, "genre", row["tag"]))
+                        ]
+                        if not checked_tags:
+                            notify("No genre tags checked on this track yet - check some, then copy", type="warning")
+                            return
+                        copied = 0
+                        for sibling_id in sibling_ids:
+                            for tag in checked_tags:
+                                sibling_key = (sibling_id, "genre", tag)
+                                # Only where the sibling's own audio/catalog
+                                # lookup already proposed this exact tag as a
+                                # candidate - never invents one it didn't
+                                # earn. A one-time copy, not a live link:
+                                # nothing here keeps watching for future
+                                # changes on either track.
+                                if sibling_key in valid_keys and not state["checked"].get(sibling_key):
+                                    state["checked"][sibling_key] = True
+                                    copied += 1
+                        if copied:
+                            notify(
+                                f"Copied {len(checked_tags)} checked tag(s) to {len(sibling_ids)} "
+                                f"sibling edit(s) - {copied} new check(s)",
+                                type="positive",
+                            )
+                        else:
+                            notify(
+                                "Nothing new to copy - sibling edit(s) either already have these "
+                                "tags checked or never proposed them as candidates",
+                                type="warning",
+                            )
+                        review_section.refresh()
+
+                    copy_btn = ui.button(btn_label, on_click=copy_to_siblings).props("outline dense size=sm")
+                    if len(sibling_ids) > 1:
+                        copy_btn.tooltip(", ".join(sibling_titles))
 
             for row in rows:
                 is_auto = row.get("is_auto", False)
@@ -640,21 +692,7 @@ def build_ui() -> None:
                     # the source of truth itself - the checkbox object
                     # doesn't survive a page turn, the dict does.
                     cb = ui.checkbox(value=state["checked"][key]).props("dense")
-
-                    def on_row_checked(e, key=key, track_id=row["track_id"], tag=row["tag"], kind=kind) -> None:
-                        state["checked"][key] = e.value
-                        # Fast path for the overwhelming common case (no
-                        # sibling edits): a plain dict write, no re-render
-                        # - matches this row's own checkbox state without
-                        # help. Only pay for propagate + a full refresh
-                        # (needed since a sibling's checkbox is a
-                        # different, possibly off-page/unbuilt element)
-                        # when this track actually has a detected sibling.
-                        if kind == "genre" and track_id in siblings_by_track:
-                            propagate_genre_to_siblings(track_id, tag, e.value)
-                            review_section.refresh()
-
-                    cb.on_value_change(on_row_checked)
+                    cb.on_value_change(lambda e, key=key: state["checked"].__setitem__(key, e.value))
 
                     label = row["tag"] + ("  · new" if row["is_new"] else "")
                     label_classes = "truncate cursor-pointer"
@@ -710,15 +748,14 @@ def build_ui() -> None:
 
             n_siblings = len(siblings_by_track.get(track_id, ()))
             if n_siblings:
-                # Not silent - checking a genre tag here also checks it
-                # on n_siblings other edit(s) of this song (see
-                # propagate_genre_to_siblings), so it's worth this track
-                # visibly saying so rather than surprising a DJ the
-                # first time they notice a sibling row changed on its
-                # own. Appended after " candidate(s)", not folded into
-                # caption_bits above, so it doesn't itself get counted
-                # as if it were another "N candidate(s)" clause.
-                caption += f" — synced genre w/ {n_siblings} other edit{'s' if n_siblings != 1 else ''}"
+                # No live sync to announce anymore (see render_rows'
+                # "Copy checked genre tags to..." button) - just naming
+                # that sibling edit(s) exist and are detected, so it's
+                # obvious why that button showed up rather than a DJ
+                # wondering where it came from. Appended after
+                # " candidate(s)", not folded into caption_bits above,
+                # so it doesn't read as another "N candidate(s)" clause.
+                caption += f" — {n_siblings} sibling edit{'s' if n_siblings != 1 else ''} detected"
 
             # Lazy render: a collapsed track only ever costs an
             # expansion shell + one empty container (a couple of DOM
