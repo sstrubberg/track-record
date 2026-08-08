@@ -549,8 +549,20 @@ def build_ui() -> None:
                     state["checked"][(track_id, row["kind"], row["tag"])] = e.value
             review_section.refresh()
 
+        # value=False used to be a hard-coded literal here, not derived
+        # from state - harmless before toggle_all() called refresh()
+        # unconditionally (nothing ever rebuilt this checkbox out from
+        # under itself), but once it did, every click rebuilt this exact
+        # checkbox back to its literal False, snapping it right back to
+        # unchecked even though the click had, in fact, just checked
+        # every row (confirmed directly: the underlying state["checked"]
+        # writes always worked correctly - only this checkbox's own
+        # displayed value was wrong). Computed fresh each render instead,
+        # same pattern the Reorganize section's own "Select all moves"
+        # checkbox already uses.
+        all_checked = bool(valid_keys) and all(state["checked"].get(key) for key in valid_keys)
         with ui.row().classes("items-center gap-2"):
-            ui.checkbox("Select all", value=False, on_change=toggle_all)
+            ui.checkbox("Select all", value=all_checked, on_change=toggle_all)
             ui.label(f"{len(tracks)} track(s) with proposed tags - high-confidence ones are pre-checked, review the rest").classes(
                 "text-gray-500"
             )
