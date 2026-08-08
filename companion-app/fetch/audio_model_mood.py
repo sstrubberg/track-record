@@ -100,9 +100,19 @@ def _load_classes() -> list[str]:
     return _classes
 
 
-def _load_models():
-    global _embedding_model, _head_model
-    if _embedding_model is None or _head_model is None:
+def load_embedding_model():
+    """Load (downloading if needed) just the discogs-effnet embedding
+    extractor - no leading underscore, unlike the rest of this module's
+    internals, because audio_model_genre_effnet.py calls this directly.
+    That module's own genre_discogs400 classification head takes the
+    exact same 1280-dim embedding this model produces as input - the
+    two are meant to be paired, and downloading/loading discogs-effnet
+    a second time into a second location would waste ~18MB and a
+    second warm-up for no benefit. Both modules end up sharing this one
+    cached instance within a process.
+    """
+    global _embedding_model
+    if _embedding_model is None:
         import essentia
         import essentia.standard as es
 
@@ -116,11 +126,21 @@ def _load_models():
             graphFilename=str(EMBEDDING_WEIGHTS_PATH),
             output=EMBEDDING_OUTPUT,
         )
+    return _embedding_model
+
+
+def _load_models():
+    global _head_model
+    embedding_model = load_embedding_model()
+    if _head_model is None:
+        import essentia.standard as es
+
+        _ensure_model()
         _head_model = es.TensorflowPredict2D(
             graphFilename=str(HEAD_WEIGHTS_PATH),
             output=HEAD_OUTPUT,
         )
-    return _embedding_model, _head_model
+    return embedding_model, _head_model
 
 
 def fetch_moods(audio_path: str) -> list[dict]:

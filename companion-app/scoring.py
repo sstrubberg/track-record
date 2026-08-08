@@ -21,15 +21,19 @@ import yaml
 DEFAULT_WEIGHTS_PATH = Path(__file__).parent / "config" / "source_weights.yaml"
 
 # Sources that use the actual Discogs-400 taxonomy (discogs.py's own
-# API results, and audio_model.py's discogs-maest classes, which are
-# trained on that same taxonomy) - preferred as the displayed spelling
-# when a tag also came from a source that doesn't share it. Concretely:
-# MusicBrainz's genre/tag data is lowercase folksonomy text ("hip hop",
-# "dance-pop") where Discogs' is Title Case ("Hip Hop", "Dance-pop") -
-# without normalizing, group_by_tag() below would treat those as two
-# unrelated tags, both losing the noisy-OR confidence boost the other
-# should have given it, not just showing as an odd-looking duplicate.
-_PREFERRED_TAG_SOURCES = ("discogs", "audio_model")
+# API results, and both audio_model.py's discogs-maest classes and
+# audio_model_genre_effnet.py's genre_discogs400 classes, which are
+# both trained on that same taxonomy) - preferred as the displayed
+# spelling when a tag also came from a source that doesn't share it.
+# Concretely, back when MusicBrainz was still a source: its genre/tag
+# data was lowercase folksonomy text ("hip hop", "dance-pop") where
+# Discogs' is Title Case ("Hip Hop", "Dance-pop") - without
+# normalizing, group_by_tag() below would treat those as two unrelated
+# tags, both losing the noisy-OR confidence boost the other should have
+# given it, not just showing as an odd-looking duplicate. Kept even
+# with MusicBrainz gone - llm_web_search, if it's ever wired in, has no
+# guarantee of matching this casing either.
+_PREFERRED_TAG_SOURCES = ("discogs", "audio_model", "audio_model_genre_effnet")
 
 # Same case/hyphen/whitespace-insensitive comparison lexicon_client.py's
 # _normalize_label() already applies when matching a fetched tag

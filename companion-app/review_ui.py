@@ -280,17 +280,20 @@ def build_ui() -> None:
 
     # Which Genre/Subgenre fetch sources actually run - unchecking one
     # skips it entirely for the run, not just down-weights it (that's
-    # still source_weights.yaml's job). Useful on its own: audio_model
-    # is by far the slowest part of a run (local inference per track),
-    # so a metadata-only pass with it off is a much faster way to
-    # sanity-check Discogs coverage. Only meaningful (and only shown)
+    # still source_weights.yaml's job). Useful on its own: the two audio
+    # models are by far the slowest part of a run (local inference per
+    # track), so a metadata-only pass with both off is a much faster way
+    # to sanity-check Discogs coverage. Only meaningful (and only shown)
     # when Genre/Subgenre itself is checked above - Mood/Theme has just
-    # the one source, nothing yet to toggle. MusicBrainz was a third
-    # option here through 2026-08-07 - dropped (see plan.py) after
-    # consistently disappointing suggestions in day-to-day use.
+    # the one source, nothing yet to toggle. MusicBrainz was a source
+    # here through 2026-08-07 - dropped (see plan.py) after consistently
+    # disappointing suggestions; audio_model_genre_effnet took its slot,
+    # a second, architecturally-independent audio model rather than a
+    # second web lookup.
     SOURCE_LABELS = {
         "discogs": "Discogs",
         "audio_model": "Audio Model (discogs-maest)",
+        "audio_model_genre_effnet": "Audio Model (genre_discogs400)",
     }
     with ui.row().classes("items-center gap-4") as source_row:
         ui.label("Genre/Subgenre sources:").classes("text-sm text-gray-500")

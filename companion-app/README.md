@@ -36,10 +36,11 @@ anything - "Apply Tags" is the only action that does:
    N tracks), the N most recently added, or everything in Incoming -
    and which action(s) to include via the "Tag with:" checkboxes
    (Genre/Subgenre, Mood/Theme, or both; both on by default). With
-   Genre/Subgenre checked, a checkbox per fetch source (Discogs, the
-   audio model) also appears, letting you turn one off
-   for this run entirely - e.g. skip the audio model, by far the
-   slowest part of a run, for a quick metadata-only pass. (Mood/Theme
+   Genre/Subgenre checked, a checkbox per fetch source (Discogs, and
+   two independent audio models - discogs-maest and genre_discogs400)
+   also appears, letting you turn any off for this run entirely - e.g.
+   skip both audio models, by far the slowest part of a run, for a
+   quick metadata-only pass. (Mood/Theme
    has no such picker - there's only one source to toggle.) Click
    "Generate Plan". With both actions checked, they run as two
    sequential phases (Genre first, then Mood), each with its own live
@@ -92,7 +93,7 @@ python plan.py --limit 20                       # try it on the first 20 tracks
 python plan.py                                   # the whole library
 python plan.py --mode recent                     # the 20 most recently added
 python plan.py --mode incoming                   # everything in Incoming
-python plan.py --sources audio_model             # skip Discogs
+python plan.py --sources audio_model,audio_model_genre_effnet  # skip Discogs
 python apply.py                                  # applies the plan's auto-include rows immediately
 
 python mood_plan.py --limit 20        # same flags, Mood/Theme's own plan/log files
@@ -133,11 +134,16 @@ python fetch/musicbrainz.py "Frankie Knuckles" "Your Love"
 python fetch/discogs.py "Frankie Knuckles" "Your Love"
 python fetch/audio_model.py "/path/to/track.wav"
 python fetch/audio_model_mood.py "/path/to/track.wav"
+python fetch/audio_model_genre_effnet.py "/path/to/track.wav"
 ```
 
 `audio_model.py` downloads the discogs-maest model weights (~330 MB,
 CC BY-NC-SA 4.0, see [NOTICE.md](../NOTICE.md)) into `models/` on first
 use - gitignored, not part of this repo. `audio_model_mood.py` does
 the same for its own two much smaller model files (~21 MB combined).
-Either way, the audio file needs to be at least ~30 seconds long;
-shorter clips raise `input signal is too short`.
+`audio_model_genre_effnet.py` shares one of those two files (the
+discogs-effnet embedding extractor) rather than downloading its own
+copy - only its ~2 MB classification head is new if Mood/Theme's
+weights are already present, ~20 MB combined otherwise. Any of the
+audio-model scripts: the audio file needs to be at least ~30 seconds
+long; shorter clips raise `input signal is too short`.

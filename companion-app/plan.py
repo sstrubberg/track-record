@@ -2,26 +2,30 @@
 """Genre/Subgenre action: load -> fetch -> score/plan.
 
 Pulls the Lexicon library, queries every available fetch source per
-track (Discogs, the local audio model - llm_web_search is on hold, see
-its own module), scores the combined candidates via scoring.py, and
-writes a plan for review_ui.py / apply.py to act on. Mirrors
-billboard_tag.py's load/fetch/plan/apply shape, but as separate files
-instead of one script - see charts/README.md.
+track (Discogs, two independent local audio models - llm_web_search is
+on hold, see its own module), scores the combined candidates via
+scoring.py, and writes a plan for review_ui.py / apply.py to act on.
+Mirrors billboard_tag.py's load/fetch/plan/apply shape, but as
+separate files instead of one script - see charts/README.md.
 
 MusicBrainz was a fetch source here too, through 2026-08-07 - dropped
 after this project's own DJ found its suggestions consistently
 disappointing in day-to-day use (fetch/musicbrainz.py itself is
 untouched and still works standalone; it's just no longer wired in
-here). Discogs + audio_model (discogs-maest) remain, both already the
-more trusted of the three, and min_agreeing_sources: 2 now means
-requiring literal agreement between both remaining sources rather than
-any 2 of 3 - a stricter auto-include bar as a direct consequence, not
-a separate change.
+here). audio_model_genre_effnet (genre_discogs400, see that module's
+own docstring) took its slot as the third source instead - same
+Discogs 400-style taxonomy as audio_model (discogs-maest), but a
+genuinely different architecture (EfficientNet vs. transformer), so it
+corroborates rather than just re-asking the same model. With
+min_agreeing_sources: 2, "2 sources agree" can now mean either audio
+model agreeing with Discogs, or the two audio models agreeing with
+each other - not tied to Discogs the way it would be with only one
+audio source in the mix.
 
     python plan.py --limit 5              # try it on the first 5 tracks
     python plan.py --track-id 131         # just one track
     python plan.py                        # the whole library
-    python plan.py --sources audio_model  # skip Discogs
+    python plan.py --sources discogs,audio_model  # skip the effnet genre model
 """
 
 from __future__ import annotations
@@ -37,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lexicon_client
 import scan_progress
 import scoring
-from fetch import audio_model, discogs
+from fetch import audio_model, audio_model_genre_effnet, discogs
 
 PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 
@@ -45,7 +49,7 @@ PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 # was never wired into fetch_candidates() below in the first place.
 # These names are also what review_ui.py's source-toggle checkboxes key
 # off of, and what --sources on the CLI accepts.
-SOURCES = ("discogs", "audio_model")
+SOURCES = ("discogs", "audio_model", "audio_model_genre_effnet")
 
 
 def fetch_candidates(track: dict, enabled_sources: set[str] | None = None) -> list[dict]:
@@ -53,8 +57,8 @@ def fetch_candidates(track: dict, enabled_sources: set[str] | None = None) -> li
     run for this track - None (the default) means all of them, same as
     before this existed. Letting a DJ turn a source off entirely (not
     just down-weight it in source_weights.yaml) is useful on its own -
-    e.g. skipping audio_model for a fast metadata-only pass, since local
-    inference is by far the slowest part of a run."""
+    e.g. skipping both audio models for a fast metadata-only pass, since
+    local inference is by far the slowest part of a run."""
     if enabled_sources is None:
         enabled_sources = set(SOURCES)
 
@@ -72,6 +76,12 @@ def fetch_candidates(track: dict, enabled_sources: set[str] | None = None) -> li
             candidates.extend(audio_model.fetch_genres(location))
         except Exception as e:
             print(f"    audio_model failed: {e}")
+
+    if location and "audio_model_genre_effnet" in enabled_sources:
+        try:
+            candidates.extend(audio_model_genre_effnet.fetch_genres(location))
+        except Exception as e:
+            print(f"    audio_model_genre_effnet failed: {e}")
 
     return candidates
 

@@ -101,12 +101,13 @@ already applied to a track is always skipped).
 Queried independently per track, never merged blindly - and each one
 has its own checkbox in the review screen (on by default), so a DJ can
 turn a source off entirely for a run rather than just down-weighting
-it in `source_weights.yaml`. Useful on its own: `audio_model` is by
-far the slowest part of a run (local inference per track), so a
-metadata-only pass with it off is a fast way to sanity-check Discogs
+it in `source_weights.yaml`. Useful on its own: the two audio models
+are by far the slowest part of a run (local inference per track), so a
+metadata-only pass with both off is a fast way to sanity-check Discogs
 coverage before committing to a full scan. At least one source has to
 stay on. `plan.py`'s CLI takes the same choice via `--sources
-audio_model` (skip Discogs) or `--sources discogs` (skip audio_model).
+audio_model,audio_model_genre_effnet` (skip Discogs) or `--sources
+discogs` (skip both audio models).
 
 - **Discogs** - style/genre via public API, artist+title search
 - **LLM web-search classification** - given artist, title, and current
@@ -116,15 +117,30 @@ audio_model` (skip Discogs) or `--sources discogs` (skip audio_model).
   the audio file, no internet dependency, so it's the only source that
   returns anything for untraceable tracks (transition edits, mashups,
   bootlegs, DJ tools with no web presence)
+- **genre_discogs400** (Essentia/MTG, local audio model) - a second,
+  independent audio model on the same Discogs-400-style taxonomy as
+  discogs-maest, but an EfficientNet classification head on
+  discogs-effnet embeddings rather than an end-to-end transformer -
+  real architectural diversity, not the same model asked twice.
+  Shares its embedding extractor with the Mood/Theme audio model
+  rather than downloading a second copy (~2 MB on top if Mood/Theme's
+  weights are already present, ~20 MB combined otherwise)
 
-MusicBrainz was a fourth source here through 2026-08-07 - dropped
-after this project's own DJ found its suggestions consistently
-disappointing in day-to-day use. `fetch/musicbrainz.py` is untouched
-and still works standalone (`python fetch/musicbrainz.py "artist"
-"title"`); it's just no longer wired into `plan.py`'s `SOURCES`. With
-one fewer source, `auto_include.min_agreeing_sources: 2` now means
-Discogs and audio_model literally agreeing, not any 2 of what used to
-be 3 - a stricter bar as a direct consequence, not a separate change.
+MusicBrainz was a fetch source here through 2026-08-07 - dropped after
+this project's own DJ found its suggestions consistently disappointing
+in day-to-day use. `fetch/musicbrainz.py` is untouched and still works
+standalone (`python fetch/musicbrainz.py "artist" "title"`); it's just
+no longer wired into `plan.py`'s `SOURCES`. genre_discogs400 took its
+slot as the third source - worth knowing: with two of the three
+sources being audio models that share an embedding extractor, those
+two agreeing with each other is weaker evidence than the old
+Discogs-catalog-vs-audio-ML kind of agreement was. `auto_include.
+min_agreeing_sources` is 3, not 2, as a direct consequence - auto-include
+via source agreement now needs literal unanimity across all three
+sources, not just any 2 of 3, closer in spirit to how strict "2 of 2"
+was right after MusicBrainz was first dropped. `min_confidence` in
+`source_weights.yaml` is still the other lever if this needs further
+tuning once there's more real-world signal.
 
 No cap on candidate tags per track.
 
