@@ -72,6 +72,21 @@ Layout:
   confidence - creating a tag is a bigger action than adding an
   existing one.
 - Source, per-source note, and links live behind a `⋮` overflow menu.
+- Different DJ edits of the same song (e.g. "Promiscuous (Intro
+  Clean)" / "Promiscuous (Quick Hit Clean)") show up as separate
+  tracks - separate audio files, separate track_ids in Lexicon - but
+  checking a Genre/Subgenre tag on one now also checks that same tag
+  on any sibling edit(s) of the same song, wherever that sibling
+  independently proposed it too (see find_sibling_edits()). Never
+  invents a candidate a sibling never actually had - this only
+  propagates a decision across tracks that already found the same
+  evidence, not asserting something new on a track's behalf. Mood/
+  Theme is deliberately NOT synced this way: real testing on two edits
+  of the same song found genre stayed consistent between them while
+  mood-adjacent tags genuinely differed (a spoken intro on one edit
+  reading as "Ballad"/"Vocal") - mood is edit-sensitive in a way genre
+  isn't. A synced track's caption says so explicitly, so a DJ isn't
+  surprised the first time a sibling row changes on its own.
 
 Each action's own apply_auto() / `python plan.py` (or `mood_plan.py`)
 + `python apply.py` (or `mood_apply.py`) CLI path still applies a
@@ -83,6 +98,7 @@ not what this screen does.
 from __future__ import annotations
 
 import json
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -139,6 +155,52 @@ def group_by_track(genre_plan: dict | None, mood_plan_: dict | None) -> dict:
     return tracks
 
 
+# Same paren/bracket-stripping regex discogs.py/musicbrainz.py already
+# use to strip DJ edit/version suffixes ("(Intro Clean)", "(MM Edit)")
+# off a title before searching a public catalog - reused here for a
+# different purpose: detecting when two different tracks already in
+# this DJ's own library are actually different edits of the same
+# underlying song, not two different songs that happen to share a
+# title.
+_EDIT_SUFFIX_RE = re.compile(r"\s*[\(\[][^)\]]*[)\]]")
+
+
+def _song_key(artist: str | None, title: str | None) -> tuple[str, str]:
+    """Case-insensitive (artist, edit-suffix-stripped title) - the
+    grouping key find_sibling_edits() below uses to treat "Promiscuous
+    (Intro Clean)" and "Promiscuous (Quick Hit Clean)" as edits of one
+    song. No artist-splitting the way discogs.py/musicbrainz.py do
+    (stripping a featured-artist credit down to the primary artist) -
+    that's for matching against an external catalog that might index
+    under just the primary artist; two edits of the same song already
+    sitting in this DJ's own library share the exact same Artist field,
+    so a plain case-insensitive match is enough here."""
+    stripped_title = _EDIT_SUFFIX_RE.sub("", title or "").strip().lower()
+    return (
+        (artist or "").strip().lower(),
+        stripped_title or (title or "").strip().lower(),  # don't key on "" if stripping ate the whole title
+    )
+
+
+def find_sibling_edits(tracks: dict) -> dict[int, list[int]]:
+    """Return {track_id: [other track_id, ...]} for every track that
+    shares its (artist, edit-suffix-stripped title) key with at least
+    one other track currently in the plan - i.e. tracks this DJ's own
+    library holds as separate DJ edits of the same underlying song.
+    Tracks with no such sibling don't appear in the returned dict at
+    all, so `track_id in find_sibling_edits(tracks)` doubles as an
+    is-this-track-part-of-a-group check.
+    """
+    groups: dict[tuple[str, str], list[int]] = {}
+    for track_id, info in tracks.items():
+        groups.setdefault(_song_key(info["artist"], info["title"]), []).append(track_id)
+    return {
+        track_id: [t for t in group if t != track_id]
+        for group in groups.values() if len(group) > 1
+        for track_id in group
+    }
+
+
 # Inline CSS grid instead of a flex row - every candidate row gets the
 # exact same column widths regardless of whether that particular row
 # has a category picker or a warning icon, so the checkbox/label/bar/
@@ -174,6 +236,15 @@ def build_ui() -> None:
         "category_choice": {},
         "page": 1,
         "page_size": DEFAULT_PAGE_SIZE,
+        # Which tracks' expansions are open - ui.expansion's own open/
+        # closed state doesn't survive review_section.refresh() (a full
+        # rebuild recreates every expansion fresh, defaulting closed),
+        # and several actions already call refresh() unconditionally
+        # (Select all, per-track "select all", sibling-edit genre sync
+        # below) - without this, any of those would silently collapse
+        # every track you had open. Same persistent-dict-survives-a-
+        # rebuild pattern as "checked" above.
+        "expanded_tracks": set(),
         # Cached whole-library track list, used only to turn a saved
         # scan_progress cursor (a track id) into an "X of Y tracks
         # scanned" count for the caption below - None until first
@@ -445,6 +516,32 @@ def build_ui() -> None:
             for key in list(d):
                 if key not in valid_keys:
                     del d[key]
+        state["expanded_tracks"] &= tracks.keys()
+
+        # DJ edits of the same song (e.g. "Promiscuous (Intro Clean)" /
+        # "Promiscuous (Quick Hit Clean)") - see find_sibling_edits()'s
+        # own docstring. Genre/Subgenre only, never Mood/Theme: real
+        # testing on two edits of the same song found genre stayed
+        # essentially consistent between them, while mood-adjacent tags
+        # (a spoken intro reading as "Ballad"/"Vocal") genuinely
+        # differed - mood is edit-sensitive in a way genre isn't, so
+        # syncing it the same way would paper over a real difference
+        # rather than remove busywork.
+        siblings_by_track = find_sibling_edits(tracks)
+
+        def propagate_genre_to_siblings(track_id: int, tag: str, value: bool) -> None:
+            """Mirror a Genre/Subgenre check/uncheck onto the identical
+            tag on this track's sibling edits - but ONLY where that
+            sibling's own audio/catalog lookup already proposed that
+            exact tag as a candidate (i.e. it's already in valid_keys).
+            Never invents a candidate a sibling never actually earned;
+            this is purely propagating a decision you already made
+            about the song across tracks that independently found the
+            same evidence for it, not asserting something new."""
+            for sibling_id in siblings_by_track.get(track_id, ()):
+                sibling_key = (sibling_id, "genre", tag)
+                if sibling_key in valid_keys:
+                    state["checked"][sibling_key] = value
 
         def toggle_all(e) -> None:
             for track_id, info in tracks.items():
@@ -504,6 +601,8 @@ def build_ui() -> None:
             def toggle_sub(e, rows=rows, kind=kind) -> None:
                 for row in rows:
                     state["checked"][(row["track_id"], kind, row["tag"])] = e.value
+                    if kind == "genre":
+                        propagate_genre_to_siblings(row["track_id"], row["tag"], e.value)
                 review_section.refresh()
 
             ui.label(KIND_LABELS[kind]).classes("text-xs font-bold text-gray-500 uppercase mt-2")
@@ -529,7 +628,21 @@ def build_ui() -> None:
                     # the source of truth itself - the checkbox object
                     # doesn't survive a page turn, the dict does.
                     cb = ui.checkbox(value=state["checked"][key]).props("dense")
-                    cb.on_value_change(lambda e, key=key: state["checked"].__setitem__(key, e.value))
+
+                    def on_row_checked(e, key=key, track_id=row["track_id"], tag=row["tag"], kind=kind) -> None:
+                        state["checked"][key] = e.value
+                        # Fast path for the overwhelming common case (no
+                        # sibling edits): a plain dict write, no re-render
+                        # - matches this row's own checkbox state without
+                        # help. Only pay for propagate + a full refresh
+                        # (needed since a sibling's checkbox is a
+                        # different, possibly off-page/unbuilt element)
+                        # when this track actually has a detected sibling.
+                        if kind == "genre" and track_id in siblings_by_track:
+                            propagate_genre_to_siblings(track_id, tag, e.value)
+                            review_section.refresh()
+
+                    cb.on_value_change(on_row_checked)
 
                     label = row["tag"] + ("  · new" if row["is_new"] else "")
                     label_classes = "truncate cursor-pointer"
@@ -573,7 +686,7 @@ def build_ui() -> None:
                                 if src.get("url"):
                                     item.on("click", lambda url=src["url"]: ui.navigate.to(url, new_tab=True))
 
-        for _, info in page_tracks:
+        for track_id, info in page_tracks:
             genre_rows = [r for r in info["rows"] if r["kind"] == "genre"]
             mood_rows = [r for r in info["rows"] if r["kind"] == "mood"]
             caption_bits = []
@@ -581,6 +694,19 @@ def build_ui() -> None:
                 caption_bits.append(f"{len(genre_rows)} genre")
             if mood_rows:
                 caption_bits.append(f"{len(mood_rows)} mood")
+            caption = " · ".join(caption_bits) + " candidate(s)"
+
+            n_siblings = len(siblings_by_track.get(track_id, ()))
+            if n_siblings:
+                # Not silent - checking a genre tag here also checks it
+                # on n_siblings other edit(s) of this song (see
+                # propagate_genre_to_siblings), so it's worth this track
+                # visibly saying so rather than surprising a DJ the
+                # first time they notice a sibling row changed on its
+                # own. Appended after " candidate(s)", not folded into
+                # caption_bits above, so it doesn't itself get counted
+                # as if it were another "N candidate(s)" clause.
+                caption += f" — synced genre w/ {n_siblings} other edit{'s' if n_siblings != 1 else ''}"
 
             # Lazy render: a collapsed track only ever costs an
             # expansion shell + one empty container (a couple of DOM
@@ -601,12 +727,28 @@ def build_ui() -> None:
                     if mood_rows:
                         render_rows(mood_rows, "Select all mood tags for this track")
 
+            # Starts open if it was open before whatever triggered this
+            # render (see state["expanded_tracks"]'s own comment) -
+            # populate it immediately in that case, since there's no
+            # fresh "just opened it" on_value_change event to do that
+            # for us when the expansion is created already-open.
+            was_expanded = track_id in state["expanded_tracks"]
             expansion = ui.expansion(
-                f"{info['artist']} — {info['title']}", caption=" · ".join(caption_bits) + " candidate(s)"
+                f"{info['artist']} — {info['title']}", caption=caption, value=was_expanded
             ).classes("w-full border border-gray-200 dark:border-gray-700 rounded-lg mb-2")
             with expansion:
                 content = ui.column().classes("w-full gap-0")
-            expansion.on_value_change(lambda e, c=content, p=populate: p(c) if e.value else None)
+            if was_expanded:
+                populate(content)
+
+            def on_expansion_toggle(e, c=content, p=populate, tid=track_id) -> None:
+                if e.value:
+                    state["expanded_tracks"].add(tid)
+                    p(c)
+                else:
+                    state["expanded_tracks"].discard(tid)
+
+            expansion.on_value_change(on_expansion_toggle)
 
         async def save():
             approved = {

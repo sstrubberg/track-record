@@ -74,7 +74,14 @@ anything - "Apply Tags" is the only action that does:
    regardless of plan size. "Select all" and Apply Tags both act
    across the *whole* plan, not just the visible page, so checking a
    tag on page 1 and a different one on page 3 both make it into the
-   same Apply Tags click.
+   same Apply Tags click. Different DJ edits of the same song (e.g.
+   "(Intro Clean)" / "(Quick Hit Clean)") are detected automatically -
+   checking a Genre/Subgenre tag on one also checks it on any sibling
+   edit that independently proposed the same tag, so you're not
+   re-deciding the same genre once per edit. Mood/Theme is deliberately
+   not synced this way, since real testing found mood genuinely differs
+   between edits in a way genre doesn't; see the top-level README's
+   "Review" section for the full rationale.
 3. Check what you agree with (or leave the pre-checked ones as they
    are) and hit **"Apply Tags"** - the one action that writes to
    Lexicon, splitting whatever's checked by kind under the hood and

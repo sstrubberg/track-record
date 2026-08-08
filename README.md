@@ -276,6 +276,24 @@ decision. Clicking "Apply Tags" splits whatever's checked by kind
 under the hood and calls each action's own `apply_decisions()` -
 potentially both in one click - then reports one combined result.
 
+Different DJ edits of the same song ("Promiscuous (Intro Clean)" /
+"Promiscuous (Quick Hit Clean)") show up as separate tracks - separate
+audio files, separate Lexicon track_ids - but checking a Genre/
+Subgenre tag on one now also checks that same tag on any sibling
+edit(s) of the same song, wherever that sibling independently proposed
+it too. Never invents a candidate a sibling never actually had - only
+propagates a decision you already made across tracks that found the
+same evidence on their own, so working through a library full of
+multi-edit songs doesn't mean re-deciding the same genre once per
+edit, or risking forgetting one. Mood/Theme is deliberately not synced
+this way: testing on two real edits of the same song found genre
+stayed consistent between them while mood-adjacent tags genuinely
+differed (a spoken intro on one edit reading as "Ballad"/"Vocal" to
+the audio model) - mood is edit-sensitive in a way genre isn't, so
+syncing it the same way would paper over a real difference rather than
+remove busywork. A track with a detected sibling says so in its
+caption, so this never happens silently.
+
 Generating a new plan while the current one has checked-but-unsaved
 rows asks for confirmation first, rather than silently discarding
 them - checked state also isn't lost on relaunch, since the whole plan
