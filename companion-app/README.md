@@ -102,17 +102,26 @@ python mood_apply.py
 
 ## Reorganizing genre tags into families
 
+Available in `review_ui.py` itself - a collapsed "Reorganize Genre
+Tags" section below the main review list. "Check Genre Organization"
+reports what would move (grouped by target category, each with its own
+checkbox, all checked by default), plus what's blocked on a missing
+category, what's ambiguous, and what's outside this taxonomy entirely.
+"Move Checked Tags" applies just the checked ones, behind a
+confirmation dialog. Same CLI also still works standalone:
+
 ```
 python reorganize_genres.py              # report only, writes nothing
 python reorganize_genres.py --apply       # actually move tags
 ```
 
-A later, separate step - after applying/creating a batch of genre tags
-via the review screen. Moves each existing tag matching
-`config/genre_taxonomy.yaml` (Discogs' 400-style family/subgenre list)
-into a `Sub-genre - {Family}` category - only categories that already
-exist; it never creates one, and never renames or merges tags. See the
-top-level README's "Reorganize" section for the full rationale.
+A later, separate step - after applying/creating a batch of genre tags,
+not triggered automatically by Apply Tags. Moves each existing tag
+matching `config/genre_taxonomy.yaml` (Discogs' 400-style
+family/subgenre list) into a `Sub-genre - {Family}` category - only
+categories that already exist; it never creates one, and never renames
+or merges tags. See the top-level README's "Reorganize" section for
+the full rationale.
 
 ## Trying a fetch source directly
 

@@ -94,6 +94,7 @@ import lexicon_client
 import mood_apply
 import mood_plan
 import plan as genre_plan_module
+import reorganize_genres
 import scan_progress
 import scoring
 
@@ -181,6 +182,18 @@ def build_ui() -> None:
         # scan actually runs, since that's the one time the count or
         # the cursor could plausibly have changed.
         "library_snapshot": None,
+        # Reorganize Genre Tags section - a separate, later step (see
+        # reorganize_genres.py's own docstring), unrelated to the
+        # genre_plan/mood_plan review above. reorg_plan holds the last
+        # computed plan_moves() result (None until "Check Genre
+        # Organization" has been clicked at least once this session);
+        # reorg_checked, keyed by tag id, is which of the proposed
+        # moves are checked - defaults to all-checked (these are
+        # deterministic taxonomy matches, not confidence-scored
+        # guesses, so there's no "needs review" bar to clear the way
+        # genre_plan/mood_plan rows have).
+        "reorg_plan": None,
+        "reorg_checked": {},
     }
     progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
@@ -676,6 +689,155 @@ def build_ui() -> None:
         ui.button("Apply Tags", on_click=save).props("color=primary").classes("mt-4")
 
     review_section()
+
+    # Reorganize Genre Tags - a separate, later step from the
+    # Generate/Apply flow above (see reorganize_genres.py's own
+    # docstring): moves existing genre tags into per-family Lexicon
+    # categories, typically run after a batch of genre tags has
+    # already been applied/created. Deliberately not auto-triggered by
+    # Apply Tags above - a batch category-move is its own deliberate
+    # action, not something that should fire as a side effect of an
+    # unrelated click.
+    with ui.expansion(
+        "Reorganize Genre Tags", caption="Run this after applying a batch of genre tags"
+    ).classes("w-full mt-4"):
+        ui.label(
+            "Moves existing genre tags into per-family categories (config/genre_taxonomy.yaml) "
+            "based on Discogs' own genre taxonomy. Never creates a category, renames a tag, or "
+            "merges tags - see the README's \"Reorganize\" section for the full rationale."
+        ).classes("text-xs text-gray-500 mb-2")
+
+        reorg_status = ui.label("").classes("text-sm text-gray-500")
+
+        async def check_reorg() -> None:
+            reorg_status.text = "checking..."
+            try:
+                plan = await run.io_bound(reorganize_genres.plan_moves)
+            except Exception as e:
+                notify(f"Couldn't check genre organization: {e}", type="negative")
+                reorg_status.text = ""
+                return
+            state["reorg_plan"] = plan
+            # Same setdefault-then-prune pattern as the main review
+            # list above - a move stays checked/unchecked across a
+            # re-check unless it's no longer proposed at all.
+            valid_ids = {row["id"] for row in plan["moves"]}
+            for tag_id in list(state["reorg_checked"]):
+                if tag_id not in valid_ids:
+                    del state["reorg_checked"][tag_id]
+            for row in plan["moves"]:
+                state["reorg_checked"].setdefault(row["id"], True)
+            reorg_status.text = ""
+            reorg_section.refresh()
+
+        ui.button("Check Genre Organization", on_click=check_reorg).props("outline")
+
+        @ui.refreshable
+        def reorg_section() -> None:
+            plan = state["reorg_plan"]
+            if plan is None:
+                return
+            moves = plan["moves"]
+            already_correct, needs_category, ambiguous, unmatched = (
+                plan["already_correct"], plan["needs_category"], plan["ambiguous"], plan["unmatched"]
+            )
+
+            ui.label(
+                f"{len(moves)} would move, {len(already_correct)} already correct, "
+                f"{len(needs_category)} need a category created first, {len(ambiguous)} ambiguous, "
+                f"{len(unmatched)} not in this taxonomy"
+            ).classes("text-sm mt-2")
+
+            if moves:
+                by_target: dict[str, list[dict]] = {}
+                for row in moves:
+                    by_target.setdefault(row["target_category"], []).append(row)
+
+                def toggle_all_reorg(e) -> None:
+                    for row in moves:
+                        state["reorg_checked"][row["id"]] = e.value
+                    reorg_section.refresh()
+
+                all_checked = all(state["reorg_checked"].get(row["id"], True) for row in moves)
+                ui.checkbox("Select all moves", value=all_checked, on_change=toggle_all_reorg).props("dense")
+
+                for target, rows in sorted(by_target.items()):
+                    hand_named = {r["current_category"] for r in rows} - {target} - {"(no category)"}
+                    hand_named = {c for c in hand_named if not c.startswith("Sub-genre - ")}
+                    with ui.expansion(f"{target} ({len(rows)})").classes("w-full"):
+                        if hand_named:
+                            ui.label(
+                                f"Pulls tag(s) out of your existing "
+                                f"categor{'y' if len(hand_named) == 1 else 'ies'}: {', '.join(sorted(hand_named))}"
+                            ).classes("text-xs text-orange-500 mb-1")
+                        for row in sorted(rows, key=lambda r: r["subgenre"]):
+                            key = row["id"]
+                            with ui.row().classes("items-center gap-2"):
+                                cb = ui.checkbox(value=state["reorg_checked"].get(key, True)).props("dense")
+                                cb.on_value_change(lambda e, key=key: state["reorg_checked"].__setitem__(key, e.value))
+                                ui.label(f"{row['label']}   {row['current_category']} → {target}").classes("text-sm")
+
+                async def apply_reorg() -> None:
+                    to_apply = [row for row in moves if state["reorg_checked"].get(row["id"], True)]
+                    if not to_apply:
+                        notify("Nothing checked to move", type="warning")
+                        return
+                    with ui.dialog() as confirm_dialog, ui.card():
+                        ui.label(
+                            f"Move {len(to_apply)} tag(s) into their family categories in Lexicon? "
+                            f"This only changes which category each tag displays under - it doesn't "
+                            f"rename any tag or change which tracks carry them."
+                        )
+                        with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                            ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
+                            ui.button(
+                                "Move Tags", color="primary",
+                                on_click=lambda: confirm_dialog.submit("continue"),
+                            )
+                    if await confirm_dialog != "continue":
+                        return
+                    result = await run.io_bound(reorganize_genres.apply_moves, to_apply)
+                    msg = f"Moved {result['ok']} tag(s) into their family categories"
+                    if result["failures"]:
+                        names = ", ".join(f"{f['label']!r} ({f['error']})" for f in result["failures"])
+                        msg += f" - {len(result['failures'])} failed: {names}"
+                    notify(msg, type="positive" if not result["failures"] else "warning")
+                    # Re-check from Lexicon so the section reflects
+                    # what's now actually true (moved tags fall out of
+                    # "would move" and into "already correct").
+                    state["reorg_plan"] = await run.io_bound(reorganize_genres.plan_moves)
+                    reorg_section.refresh()
+
+                ui.button("Move Checked Tags", on_click=apply_reorg).props("color=primary").classes("mt-2")
+
+            if needs_category:
+                by_family: dict[str, list[dict]] = {}
+                for row in needs_category:
+                    by_family.setdefault(row["target_category"], []).append(row)
+                with ui.expansion(f"Needs a category created first ({len(needs_category)})").classes("w-full"):
+                    ui.label(
+                        "This project never creates a category on your behalf - create these in "
+                        "Lexicon yourself, then click \"Check Genre Organization\" again."
+                    ).classes("text-xs text-gray-500 mb-1")
+                    for target, rows in sorted(by_family.items()):
+                        names = ", ".join(row["label"] for row in rows)
+                        ui.label(f"{target}: {names}").classes("text-sm")
+
+            if ambiguous:
+                with ui.expansion(f"Ambiguous - needs your call ({len(ambiguous)})").classes("w-full"):
+                    for row in ambiguous:
+                        options = ", ".join(f"{fam} ({sub})" for fam, sub in row["candidates"])
+                        ui.label(f"{row['label']} (currently in {row['current_category']}): {options}").classes("text-sm")
+
+            if unmatched:
+                with ui.expansion(f"Not in this taxonomy ({len(unmatched)}) - left alone").classes("w-full"):
+                    by_cat: dict[str, int] = {}
+                    for row in unmatched:
+                        by_cat[row["current_category"]] = by_cat.get(row["current_category"], 0) + 1
+                    for cat, n in sorted(by_cat.items(), key=lambda kv: -kv[1]):
+                        ui.label(f"{n}  {cat}").classes("text-sm")
+
+        reorg_section()
 
     async def generate():
         include_genre = genre_enabled_checkbox.value

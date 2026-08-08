@@ -276,17 +276,24 @@ deliberately different, opt-in tool for scripted/headless use (e.g. a
 cron job that generates a plan overnight), not what the review screen
 itself does.
 
-### Reorganize (`reorganize_genres.py`)
+### Reorganize (`reorganize_genres.py`, also in the review screen)
 
 A separate, later step - after a DJ has already applied/created a
 batch of genre tags via the review screen, not part of Generate/Apply
-itself. `config/genre_taxonomy.yaml` (Discogs' own 400-style
-family/subgenre structure - same taxonomy discogs-maest's classes
-already use, see its `_meta` block for the full schema) defines which
-canonical subgenre belongs to which family; this script moves each
-matching existing tag's Lexicon category to `Sub-genre - {Family}`,
-extending the same category-naming convention already in use for
-`Sub-genre - Electronic`/`Sub-genre - Rock`/etc.
+itself. Available both as a CLI script and as its own collapsed
+"Reorganize Genre Tags" section in `review_ui.py`, below the main
+review list - "Check Genre Organization" runs the same report either
+way, with a checkbox per proposed move (all checked by default,
+uncheck any you disagree with) and a confirmed "Move Checked Tags"
+button. Deliberately not triggered automatically by Apply Tags - a
+batch category move is its own deliberate action, not a side effect of
+an unrelated click. `config/genre_taxonomy.yaml` (Discogs' own
+400-style family/subgenre structure - same taxonomy discogs-maest's
+classes already use, see its `_meta` block for the full schema) defines
+which canonical subgenre belongs to which family; moving a tag changes
+its Lexicon category to `Sub-genre - {Family}`, extending the same
+category-naming convention already in use for `Sub-genre -
+Electronic`/`Sub-genre - Rock`/etc.
 
 "Active" isn't hand-curated in the taxonomy file (it ships with every
 family/subgenre `active: false`) - a family/subgenre counts as active

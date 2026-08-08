@@ -176,8 +176,14 @@ def print_report(plan: dict) -> None:
             print(f"    {n:>3}  {cat}")
 
 
-def apply_moves(moves: list[dict]) -> None:
-    ok = fail = 0
+def apply_moves(moves: list[dict]) -> dict:
+    """Actually move each given row's tag to its target_category_id.
+    Returns {"ok": int, "failures": [{"label", "id", "error"}, ...]} -
+    structured rather than printed directly, so review_ui.py's own
+    "Reorganize Genre Tags" section can report the same outcome as a
+    notification instead of stdout only reaching the CLI caller."""
+    ok = 0
+    failures = []
     for row in moves:
         r = requests.patch(
             f"{lexicon_client.LEXICON}/tag",
@@ -187,9 +193,8 @@ def apply_moves(moves: list[dict]) -> None:
         if r.ok:
             ok += 1
         else:
-            fail += 1
-            print(f"  FAILED {row['label']!r} (id={row['id']}): HTTP {r.status_code} {r.text[:150]}")
-    print(f"\n{ok} tag(s) moved, {fail} failed")
+            failures.append({"label": row["label"], "id": row["id"], "error": f"HTTP {r.status_code} {r.text[:150]}"})
+    return {"ok": ok, "failures": failures}
 
 
 def main() -> None:
@@ -208,7 +213,10 @@ def main() -> None:
         print("\nnothing to move")
         return
 
-    apply_moves(plan["moves"])
+    result = apply_moves(plan["moves"])
+    for f in result["failures"]:
+        print(f"  FAILED {f['label']!r} (id={f['id']}): {f['error']}")
+    print(f"\n{result['ok']} tag(s) moved, {len(result['failures'])} failed")
 
 
 if __name__ == "__main__":
