@@ -27,7 +27,7 @@
     {
       "id": "trackrecord.taggenres",
       "name": "Tag Genres + Subgenres",
-      "description": "Reviews genre/subgenre candidates gathered from MusicBrainz, Discogs, LLM web search, and the local audio model, each with source attribution and confidence. Merges approved tags; never removes or overwrites existing ones.",
+      "description": "Reviews genre/subgenre candidates gathered from Discogs, LLM web search, and the local audio model, each with source attribution and confidence. Merges approved tags; never removes or overwrites existing ones.",
       "config": {
         "permissions": {
           "track": {

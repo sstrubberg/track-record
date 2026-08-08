@@ -32,9 +32,9 @@ reporting both outcomes in one combined notification.
 Layout:
 - Scan-mode picker (whole library / most recently added / Incoming,
   optionally capped by count) and the Genre/Subgenre source checkboxes
-  (MusicBrainz, Discogs, the audio model - only shown when Genre/
-  Subgenre itself is checked, since Mood/Theme has only one source and
-  nothing to toggle) are shared controls above one "Generate Plan"
+  (Discogs, the audio model - only shown when Genre/Subgenre itself is
+  checked, since Mood/Theme has only one source and nothing to toggle)
+  are shared controls above one "Generate Plan"
   button. A full-library run is slow (rate-limited API calls plus
   local audio inference per track), so "Stop" aborts mid-run - takes
   effect after the current track finishes, not instantly, and keeps
@@ -283,11 +283,12 @@ def build_ui() -> None:
     # still source_weights.yaml's job). Useful on its own: audio_model
     # is by far the slowest part of a run (local inference per track),
     # so a metadata-only pass with it off is a much faster way to
-    # sanity-check MusicBrainz/Discogs coverage. Only meaningful (and
-    # only shown) when Genre/Subgenre itself is checked above - Mood/
-    # Theme has just the one source, nothing yet to toggle.
+    # sanity-check Discogs coverage. Only meaningful (and only shown)
+    # when Genre/Subgenre itself is checked above - Mood/Theme has just
+    # the one source, nothing yet to toggle. MusicBrainz was a third
+    # option here through 2026-08-07 - dropped (see plan.py) after
+    # consistently disappointing suggestions in day-to-day use.
     SOURCE_LABELS = {
-        "musicbrainz": "MusicBrainz",
         "discogs": "Discogs",
         "audio_model": "Audio Model (discogs-maest)",
     }

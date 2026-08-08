@@ -103,12 +103,11 @@ has its own checkbox in the review screen (on by default), so a DJ can
 turn a source off entirely for a run rather than just down-weighting
 it in `source_weights.yaml`. Useful on its own: `audio_model` is by
 far the slowest part of a run (local inference per track), so a
-metadata-only pass with it off is a fast way to sanity-check
-MusicBrainz/Discogs coverage before committing to a full scan. At
-least one source has to stay on. `plan.py`'s CLI takes the same choice
-via `--sources musicbrainz,discogs`.
+metadata-only pass with it off is a fast way to sanity-check Discogs
+coverage before committing to a full scan. At least one source has to
+stay on. `plan.py`'s CLI takes the same choice via `--sources
+audio_model` (skip Discogs) or `--sources discogs` (skip audio_model).
 
-- **MusicBrainz** - genre via MBID lookup
 - **Discogs** - style/genre via public API, artist+title search
 - **LLM web-search classification** - given artist, title, and current
   genre, prompted to return every defensible subgenre tag with its
@@ -117,6 +116,15 @@ via `--sources musicbrainz,discogs`.
   the audio file, no internet dependency, so it's the only source that
   returns anything for untraceable tracks (transition edits, mashups,
   bootlegs, DJ tools with no web presence)
+
+MusicBrainz was a fourth source here through 2026-08-07 - dropped
+after this project's own DJ found its suggestions consistently
+disappointing in day-to-day use. `fetch/musicbrainz.py` is untouched
+and still works standalone (`python fetch/musicbrainz.py "artist"
+"title"`); it's just no longer wired into `plan.py`'s `SOURCES`. With
+one fewer source, `auto_include.min_agreeing_sources: 2` now means
+Discogs and audio_model literally agreeing, not any 2 of what used to
+be 3 - a stricter bar as a direct consequence, not a separate change.
 
 No cap on candidate tags per track.
 
@@ -127,10 +135,9 @@ style-level one does.
 
 #### Matching a DJ library's title/artist strings against public catalogs
 
-DJ libraries routinely spell things in ways MusicBrainz/Discogs won't
-match verbatim - both fetch sources normalize before searching, then
-fall back to the untouched original if the normalized version finds
-nothing:
+DJ libraries routinely spell things in ways Discogs won't match
+verbatim - it normalizes before searching, then falls back to the
+untouched original if the normalized version finds nothing:
 
 - **Edit/version suffixes** - `"Hollaback Girl (Intro Clean)"`,
   `"... (MM Edit)"` - stripped from the title before search (a survey
@@ -138,10 +145,10 @@ nothing:
   these). Same paren/bracket-stripping regex `billboard_tag.py` already
   uses for chart-title matching.
 - **Merged featured-artist credits** - `"Nelly Furtado ft Timbaland"`
-  is stored as one Artist field, but both catalogs index releases under
-  the primary artist alone. Same `ARTIST_SPLIT` pattern
-  `billboard_tag.py` uses for chart-artist matching, applied before
-  search rather than to build a fuzzy key.
+  is stored as one Artist field, but Discogs indexes releases under the
+  primary artist alone. Same `ARTIST_SPLIT` pattern `billboard_tag.py`
+  uses for chart-artist matching, applied before search rather than to
+  build a fuzzy key.
 - **Bootleg/compilation Discogs releases** - a result whose `format`
   says `Compilation` or `Unofficial Release` describes dozens of
   unrelated tracks, not the one asked about, and is skipped rather than
@@ -149,10 +156,9 @@ nothing:
 
 These fix the common, generic cases. Some mismatches are one-off and
 not fixable by normalization - e.g. an act catalogued under a
-stylized spelling Discogs itself uses (`N*E*R*D`), or a MusicBrainz
-recording that matches fine but has no genre/tag data attached at any
-level. `billboard_tag.py`'s `ARTIST_ALIASES` dict is the precedent for
-handling a specific one-off by hand if one turns out to matter.
+stylized spelling Discogs itself uses (`N*E*R*D`). `billboard_tag.py`'s
+`ARTIST_ALIASES` dict is the precedent for handling a specific one-off
+by hand if one turns out to matter.
 
 ### Mood/Theme fetch source
 

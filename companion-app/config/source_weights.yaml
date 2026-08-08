@@ -3,12 +3,18 @@
 #
 # confidence = 1 - Π(1 - weight_i * score_i)  across sources that found the tag
 #
-# Metadata sources (musicbrainz, discogs) report score=1 (found it or didn't);
-# model sources (audio_model, llm_web_search) report their own probability
+# Metadata sources (discogs) report score=1 (found it or didn't); model
+# sources (audio_model, llm_web_search) report their own probability
 # per tag, so weight here is the only lever for those.
+#
+# musicbrainz isn't listed here anymore - dropped as a fetch source
+# entirely (see plan.py) after this project's own DJ found its
+# suggestions consistently disappointing. fetch/musicbrainz.py itself
+# is untouched, still works standalone, and this weight would still
+# apply if it's ever wired back in - it's just not consulted while
+# plan.py's SOURCES doesn't include it.
 
 sources:
-  musicbrainz: 0.9
   discogs: 0.85
   llm_web_search: 0.6
   audio_model: 0.7

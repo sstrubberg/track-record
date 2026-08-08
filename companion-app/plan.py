@@ -2,16 +2,26 @@
 """Genre/Subgenre action: load -> fetch -> score/plan.
 
 Pulls the Lexicon library, queries every available fetch source per
-track (MusicBrainz, Discogs, the local audio model - llm_web_search is
-on hold, see its own module), scores the combined candidates via
-scoring.py, and writes a plan for review_ui.py / apply.py to act on.
-Mirrors billboard_tag.py's load/fetch/plan/apply shape, but as
-separate files instead of one script - see charts/README.md.
+track (Discogs, the local audio model - llm_web_search is on hold, see
+its own module), scores the combined candidates via scoring.py, and
+writes a plan for review_ui.py / apply.py to act on. Mirrors
+billboard_tag.py's load/fetch/plan/apply shape, but as separate files
+instead of one script - see charts/README.md.
+
+MusicBrainz was a fetch source here too, through 2026-08-07 - dropped
+after this project's own DJ found its suggestions consistently
+disappointing in day-to-day use (fetch/musicbrainz.py itself is
+untouched and still works standalone; it's just no longer wired in
+here). Discogs + audio_model (discogs-maest) remain, both already the
+more trusted of the three, and min_agreeing_sources: 2 now means
+requiring literal agreement between both remaining sources rather than
+any 2 of 3 - a stricter auto-include bar as a direct consequence, not
+a separate change.
 
     python plan.py --limit 5              # try it on the first 5 tracks
     python plan.py --track-id 131         # just one track
     python plan.py                        # the whole library
-    python plan.py --sources discogs,audio_model  # skip MusicBrainz
+    python plan.py --sources audio_model  # skip Discogs
 """
 
 from __future__ import annotations
@@ -27,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lexicon_client
 import scan_progress
 import scoring
-from fetch import audio_model, discogs, musicbrainz
+from fetch import audio_model, discogs
 
 PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 
@@ -35,7 +45,7 @@ PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 # was never wired into fetch_candidates() below in the first place.
 # These names are also what review_ui.py's source-toggle checkboxes key
 # off of, and what --sources on the CLI accepts.
-SOURCES = ("musicbrainz", "discogs", "audio_model")
+SOURCES = ("discogs", "audio_model")
 
 
 def fetch_candidates(track: dict, enabled_sources: set[str] | None = None) -> list[dict]:
@@ -51,14 +61,11 @@ def fetch_candidates(track: dict, enabled_sources: set[str] | None = None) -> li
     artist, title, location = track.get("artist") or "", track.get("title") or "", track.get("location")
     candidates = []
 
-    if artist or title:
-        for name, fn in (("musicbrainz", musicbrainz.fetch_genres), ("discogs", discogs.fetch_genres)):
-            if name not in enabled_sources:
-                continue
-            try:
-                candidates.extend(fn(artist, title))
-            except Exception as e:
-                print(f"    {name} failed: {e}")
+    if (artist or title) and "discogs" in enabled_sources:
+        try:
+            candidates.extend(discogs.fetch_genres(artist, title))
+        except Exception as e:
+            print(f"    discogs failed: {e}")
 
     if location and "audio_model" in enabled_sources:
         try:

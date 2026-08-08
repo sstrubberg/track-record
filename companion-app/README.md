@@ -36,8 +36,8 @@ anything - "Apply Tags" is the only action that does:
    N tracks), the N most recently added, or everything in Incoming -
    and which action(s) to include via the "Tag with:" checkboxes
    (Genre/Subgenre, Mood/Theme, or both; both on by default). With
-   Genre/Subgenre checked, a checkbox per fetch source (MusicBrainz,
-   Discogs, the audio model) also appears, letting you turn one off
+   Genre/Subgenre checked, a checkbox per fetch source (Discogs, the
+   audio model) also appears, letting you turn one off
    for this run entirely - e.g. skip the audio model, by far the
    slowest part of a run, for a quick metadata-only pass. (Mood/Theme
    has no such picker - there's only one source to toggle.) Click
@@ -92,7 +92,7 @@ python plan.py --limit 20                       # try it on the first 20 tracks
 python plan.py                                   # the whole library
 python plan.py --mode recent                     # the 20 most recently added
 python plan.py --mode incoming                   # everything in Incoming
-python plan.py --sources discogs,audio_model     # skip MusicBrainz
+python plan.py --sources audio_model             # skip Discogs
 python apply.py                                  # applies the plan's auto-include rows immediately
 
 python mood_plan.py --limit 20        # same flags, Mood/Theme's own plan/log files
