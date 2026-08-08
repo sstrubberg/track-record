@@ -663,6 +663,13 @@ def build_ui() -> None:
                 msg += f" - failed to create: {names}"
             notify(msg, type="positive" if not failed else "warning")
 
+            # At least one genre tag actually made it to Lexicon this
+            # session - the Reorganize Genre Tags section (hidden by
+            # default, see its own comment above) now has something
+            # real to work with.
+            if results.get("genre", {}).get("entries"):
+                reorg_container.visible = True
+
             # Drop whatever was actually written from the in-memory
             # plans - otherwise those rows sit there still checked, the
             # review screen keeps showing tags that already made it to
@@ -697,8 +704,15 @@ def build_ui() -> None:
     # already been applied/created. Deliberately not auto-triggered by
     # Apply Tags above - a batch category-move is its own deliberate
     # action, not something that should fire as a side effect of an
-    # unrelated click.
-    with ui.expansion(
+    # unrelated click. Hidden entirely until that's actually happened
+    # at least once this session (save() below flips this visible) -
+    # nothing to reorganize yet is nothing worth showing, and hiding
+    # it keeps the screen focused on Generate/Review/Apply until
+    # there's a reason to look at this at all.
+    reorg_container = ui.column().classes("w-full")
+    reorg_container.visible = False
+
+    with reorg_container, ui.expansion(
         "Reorganize Genre Tags", caption="Run this after applying a batch of genre tags"
     ).classes("w-full mt-4"):
         ui.label(
