@@ -1,0 +1,92 @@
+"""Loads config/genre_taxonomy.yaml (Discogs 400-style genre families ->
+subgenres - see that file's own _meta block for provenance and schema)
+and builds the label-matching lookup reorganize_genres.py needs.
+
+Deliberately does NOT read or write the file's own "active" flags.
+Every family/subgenre in the file ships with active: false - the DJ
+this was built for hasn't hand-curated a working set in it, and
+reorganize_genres.py doesn't need one: "active" there means "has at
+least one matching tag already in this Lexicon library," computed
+fresh from the live library every run (see that module's docstring),
+not something curated by hand in this file ahead of time.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+
+# Reuses lexicon_client's own case/hyphen/whitespace-insensitive
+# normalization (the same rule it already applies when matching a
+# proposed tag name against an existing Lexicon label) rather than
+# introducing a second normalization scheme - a taxonomy canonical name
+# or source alias is exactly the same kind of "does this label already
+# exist under a slightly different spelling" question.
+from lexicon_client import _normalize_label
+
+TAXONOMY_FILE = Path(__file__).resolve().parent / "config" / "genre_taxonomy.yaml"
+
+
+def load_taxonomy(path: Path | None = None) -> dict:
+    return yaml.safe_load((path or TAXONOMY_FILE).read_text())
+
+
+def build_lookup(taxonomy: dict) -> tuple[dict[str, tuple[str, str, str, str]], dict[str, list[tuple[str, str]]]]:
+    """Return (lookup, ambiguous).
+
+    lookup: {normalized_name: (family_key, family_canonical,
+    subgenre_key, subgenre_canonical)} - one entry per name a real
+    Lexicon tag might plausibly carry for a given subgenre: its own
+    canonical spelling plus every non-null source_alias
+    (discogs/discogs_maest/beatport/spotify/musicbrainz). discogs and
+    discogs_maest are always identical to canonical in the source file
+    (same taxonomy, per its own _meta notes) so those two rarely add a
+    new key on their own - this mostly exists for whichever of
+    beatport/spotify/musicbrainz have been filled in.
+
+    ambiguous: {normalized_name: [(family_canonical, subgenre_canonical), ...]}
+    - a real, non-buggy property of Discogs' own taxonomy, not a data
+    error to paper over: the same style name genuinely appears under
+    more than one family (e.g. "Disco" is both an Electronic style and
+    a Funk/Soul style; "Electro" is both Electronic and Hip Hop).
+    Silently picking one via dict overwrite would move a tag into a
+    family the DJ never actually meant - these names are excluded from
+    `lookup` entirely and reported separately instead, left for a human
+    decision rather than an automatic (and possibly wrong) one.
+    """
+    seen: dict[str, list[tuple[str, str, str, str]]] = {}
+    for family_key, family in (taxonomy.get("genre_families") or {}).items():
+        family_canonical = family.get("canonical") or family_key
+        for subgenre_key, subgenre in (family.get("subgenres") or {}).items():
+            subgenre_canonical = subgenre.get("canonical") or subgenre_key
+            names = {subgenre_canonical}
+            for alias in (subgenre.get("source_aliases") or {}).values():
+                if alias:
+                    names.add(alias)
+            for name in names:
+                entry = (family_key, family_canonical, subgenre_key, subgenre_canonical)
+                seen.setdefault(_normalize_label(name), []).append(entry)
+
+    lookup, ambiguous = {}, {}
+    for norm_name, entries in seen.items():
+        # More than one *distinct family* claiming this name is the real
+        # ambiguity worth blocking on - the same subgenre showing up
+        # twice (e.g. matched by both its canonical spelling and an
+        # identical discogs_maest alias) is not.
+        distinct_families = {e[1] for e in entries}
+        if len(distinct_families) > 1:
+            ambiguous[norm_name] = sorted({(e[1], e[3]) for e in entries})
+        else:
+            lookup[norm_name] = entries[0]
+    return lookup, ambiguous
+
+
+if __name__ == "__main__":
+    taxonomy = load_taxonomy()
+    lookup, ambiguous = build_lookup(taxonomy)
+    n_families = len(taxonomy.get("genre_families") or {})
+    n_subgenres = sum(len(f.get("subgenres") or {}) for f in (taxonomy.get("genre_families") or {}).values())
+    print(f"{n_families} families, {n_subgenres} subgenres, {len(lookup)} matchable name(s), {len(ambiguous)} ambiguous name(s)")
+    for norm_name, options in ambiguous.items():
+        print(f"  ambiguous: {norm_name!r} -> {options}")

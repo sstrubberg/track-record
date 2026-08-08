@@ -100,6 +100,20 @@ python mood_plan.py --mode recent
 python mood_apply.py
 ```
 
+## Reorganizing genre tags into families
+
+```
+python reorganize_genres.py              # report only, writes nothing
+python reorganize_genres.py --apply       # actually move tags
+```
+
+A later, separate step - after applying/creating a batch of genre tags
+via the review screen. Moves each existing tag matching
+`config/genre_taxonomy.yaml` (Discogs' 400-style family/subgenre list)
+into a `Sub-genre - {Family}` category - only categories that already
+exist; it never creates one, and never renames or merges tags. See the
+top-level README's "Reorganize" section for the full rationale.
+
 ## Trying a fetch source directly
 
 Each module under `fetch/` is runnable on its own for a quick check

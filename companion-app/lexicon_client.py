@@ -71,6 +71,25 @@ def fetch_categories() -> list[dict]:
     ]
 
 
+def fetch_tags_with_categories() -> tuple[list[dict], dict[int, str]]:
+    """Return (tags, category_labels) - tags as every Custom Tag with its
+    current categoryId ([{"id", "categoryId", "label"}, ...], original
+    casing), category_labels as {id: label} for the categories those
+    tags currently belong to. Lexicon's categories are flat (no
+    nesting/parent field, confirmed directly against a live instance) -
+    reorganize_genres.py is the one caller that needs a tag's *current*
+    category alongside its label, to compute whether it needs to move;
+    fetch_categories() alone (just the category list) and
+    fetch_tag_index() alone (just id<->label) don't carry that link."""
+    payload = lexicon_get("/tags")
+    tags = [
+        {"id": t["id"], "categoryId": t.get("categoryId"), "label": t.get("label") or t.get("name") or ""}
+        for t in payload.get("tags", [])
+    ]
+    category_labels = {c["id"]: c["label"] for c in payload.get("categories", []) if c.get("label")}
+    return tags, category_labels
+
+
 def create_tag(label: str, category_id: int) -> int:
     """POST /tag - creates a new Custom Tag in an existing category and
     returns its id. Never call this to create a category; Lexicon has a

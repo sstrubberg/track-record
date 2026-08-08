@@ -276,6 +276,42 @@ deliberately different, opt-in tool for scripted/headless use (e.g. a
 cron job that generates a plan overnight), not what the review screen
 itself does.
 
+### Reorganize (`reorganize_genres.py`)
+
+A separate, later step - after a DJ has already applied/created a
+batch of genre tags via the review screen, not part of Generate/Apply
+itself. `config/genre_taxonomy.yaml` (Discogs' own 400-style
+family/subgenre structure - same taxonomy discogs-maest's classes
+already use, see its `_meta` block for the full schema) defines which
+canonical subgenre belongs to which family; this script moves each
+matching existing tag's Lexicon category to `Sub-genre - {Family}`,
+extending the same category-naming convention already in use for
+`Sub-genre - Electronic`/`Sub-genre - Rock`/etc.
+
+"Active" isn't hand-curated in the taxonomy file (it ships with every
+family/subgenre `active: false`) - a family/subgenre counts as active
+here if at least one existing Lexicon tag's label already matches it,
+computed fresh from the live library every run.
+
+Same "never creates a category on the user's behalf" rule as Apply
+above - a family with matching tags but no `Sub-genre - {Family}`
+category yet is reported, not created; create it by hand in Lexicon
+first, then rerun. A subgenre name genuinely shared by more than one
+family in Discogs' own taxonomy (`Disco` is both an Electronic style
+and a Funk/Soul style, `Electro` is both Electronic and Hip Hop, and
+14 more) is reported as ambiguous rather than auto-resolved either
+way. Scoped to moving tags between categories only - never renames a
+label or merges two tags into one; both are bigger, separate decisions
+than "which category does this already-correct tag live in."
+
+Always a dry run - reports what would move, writes nothing - unless
+`--apply` is passed:
+
+```
+python reorganize_genres.py              # report only
+python reorganize_genres.py --apply       # actually move tags
+```
+
 ## License
 
 AGPL-3.0 (see [LICENSE](LICENSE)), required once the companion app
