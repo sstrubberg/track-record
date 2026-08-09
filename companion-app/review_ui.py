@@ -315,6 +315,17 @@ def build_ui() -> None:
         # proposed alongside it (never, for a manual pick - see that
         # module's own docstring).
         "reorg_manual_assignments": {},
+        # Multi-select state for the "Not in this taxonomy" section's
+        # "Assign Checked" control, keyed by tag id - deliberately a
+        # separate dict from reorg_checked (that one's "checked" means
+        # "include in Apply Checked Changes," defaulting True; this
+        # one's "checked" means "part of the batch I'm about to assign
+        # a family to," defaulting False - nothing should be silently
+        # included in a bulk family assignment). A tag's own entry here
+        # is popped once it's actually assigned (see
+        # assign_checked_unmatched below) and pruned on every re-plan
+        # like reorg_checked is, so a stale id never lingers.
+        "reorg_unmatched_checked": {},
     }
     progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
@@ -1087,6 +1098,13 @@ def build_ui() -> None:
                     del state["reorg_checked"][tag_id]
             for row in plan["moves"] + plan["renames"]:
                 state["reorg_checked"].setdefault(row["id"], True)
+            # Same prune, no setdefault - this one defaults to
+            # unchecked (see its own comment in build_ui()'s state
+            # dict), so there's nothing to default a still-valid id to.
+            valid_unmatched_ids = {row["id"] for row in plan["unmatched"]}
+            for tag_id in list(state["reorg_unmatched_checked"]):
+                if tag_id not in valid_unmatched_ids:
+                    del state["reorg_unmatched_checked"][tag_id]
             reorg_section.refresh()
             return True
 
@@ -1245,6 +1263,38 @@ def build_ui() -> None:
                     if await refresh_reorg_plan():
                         notify(f"Assigned {len(rows)} tag(s) to {family_canonical}", type="positive")
 
+                # A whole group's own bulk button (above) only ever
+                # covers "this entire group is one family" - a group a
+                # DJ pointed out directly was genuinely mixed (their own
+                # "Sub-genre - R&B" catch-all turned out to hold plenty
+                # of real Hip-Hop) needs splitting into more than one
+                # batch instead. Same underlying mechanism as the
+                # per-group bulk button, just working from a DJ-picked
+                # subset (via the checkbox on each row below) instead of
+                # a whole group - check the Hip-Hop-flavored ones, pick
+                # Hip Hop, Assign Checked; check what's left, pick Funk
+                # / Soul, Assign Checked again.
+                def on_unmatched_check_change(e, key: int) -> None:
+                    state["reorg_unmatched_checked"][key] = e.value
+                    n = sum(1 for v in state["reorg_unmatched_checked"].values() if v)
+                    checked_count_label.text = f"{n} checked"
+
+                async def assign_checked_unmatched() -> None:
+                    family_key = assign_checked_select.value
+                    if not family_key:
+                        notify("Pick a family first", type="warning")
+                        return
+                    checked_rows = [row for row in unmatched if state["reorg_unmatched_checked"].get(row["id"])]
+                    if not checked_rows:
+                        notify("Nothing checked", type="warning")
+                        return
+                    family_canonical = family_options[family_key]
+                    for row in checked_rows:
+                        _record_assignment(row, family_key, family_canonical)
+                        state["reorg_unmatched_checked"].pop(row["id"], None)
+                    if await refresh_reorg_plan():
+                        notify(f"Assigned {len(checked_rows)} tag(s) to {family_canonical}", type="positive")
+
                 by_cat: dict[str, list[dict]] = {}
                 for row in unmatched:
                     by_cat.setdefault(row["current_category"], []).append(row)
@@ -1276,8 +1326,16 @@ def build_ui() -> None:
                         "custom label you made up, or a real subgenre this taxonomy just doesn't "
                         "list yet. Pick a family for each one you want organized; skip whatever "
                         "isn't worth deciding on right now, they'll still be here next time. Never "
-                        "renamed - see the intro text above for why."
+                        "renamed - see the intro text above for why. Check a few and use \"Assign "
+                        "Checked\" below to split a mixed group into more than one batch at once, "
+                        "or just use each row's own picker one at a time."
                     ).classes("text-xs text-gray-500 mb-2")
+                    with ui.row().classes("items-center gap-2 mb-2"):
+                        checked_count_label = ui.label("0 checked").classes("text-xs text-gray-500")
+                        assign_checked_select = ui.select(
+                            family_options, label="assign checked to", with_input=True,
+                        ).props("dense outlined").classes("w-56")
+                        ui.button("Assign Checked", on_click=assign_checked_unmatched).props("outline dense size=sm")
                     for cat, rows in sorted(by_cat.items(), key=lambda kv: -len(kv[1])):
                         with ui.row().classes("items-center gap-2 mt-2"):
                             ui.label(f"{cat} ({len(rows)})").classes("text-xs font-medium text-gray-500")
@@ -1288,7 +1346,10 @@ def build_ui() -> None:
                                     on_click=lambda rows=rows, key=bulk_family_key: bulk_assign_unmatched(rows, key),
                                 ).props("outline dense size=sm")
                         for row in sorted(rows, key=lambda r: r["label"]):
+                            key = row["id"]
                             with ui.row().classes("items-center gap-2"):
+                                cb = ui.checkbox(value=state["reorg_unmatched_checked"].get(key, False)).props("dense")
+                                cb.on_value_change(lambda e, key=key: on_unmatched_check_change(e, key))
                                 ui.label(row["label"]).classes("text-sm")
                                 ui.select(
                                     family_options, label="assign to family", with_input=True,
