@@ -110,7 +110,36 @@ def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None =
         current_category = category_labels.get(tag["categoryId"], "(no category)")
 
         if norm in ambiguous_names:
-            ambiguous.append({**tag, "current_category": current_category, "candidates": ambiguous_names[norm]})
+            candidates = ambiguous_names[norm]
+            # A tag flagged ambiguous by name alone might already be
+            # sitting in one of its valid candidate categories - e.g. a
+            # DJ resolved it in an earlier session, checked it, and
+            # moved it via apply_moves(), but nothing remembers that
+            # resolution across a later Check Genre Organization rerun
+            # (resolved_ambiguous above only ever covers the *current*
+            # call - review_ui.py's copy of it lives in that session's
+            # own state, not written anywhere plan_moves() can see on
+            # its own). Without this check, an already-resolved-and-
+            # moved tag would reappear as "ambiguous" forever, reading
+            # as if the earlier work never happened even though it
+            # genuinely did - reported directly, confirmed directly
+            # (all 12 ambiguous tags in a real run turned out to
+            # already be correctly placed).
+            resolved_match = next(
+                (c for c in candidates if current_category == f"{CATEGORY_PREFIX}{c[1]}"),
+                None,
+            )
+            if resolved_match is not None:
+                family_key, family_canonical, subgenre_key, subgenre_canonical = resolved_match
+                already_correct.append({
+                    **tag,
+                    "current_category": current_category,
+                    "family": family_canonical,
+                    "subgenre": subgenre_canonical,
+                    "target_category": current_category,
+                })
+            else:
+                ambiguous.append({**tag, "current_category": current_category, "candidates": candidates})
             continue
 
         match = lookup.get(norm)
