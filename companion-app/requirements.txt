@@ -5,6 +5,12 @@ nicegui[native]
 pyyaml
 python-dotenv
 
+# review_ui.py's Settings view - round-trip YAML so editing a value
+# there doesn't strip every explanatory comment out of
+# source_weights.yaml/mood_weights.yaml (plain pyyaml.dump() can't
+# preserve comments; ruamel.yaml can)
+ruamel.yaml
+
 # fetch/musicbrainz.py, fetch/discogs.py
 requests>=2.31
 

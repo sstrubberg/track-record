@@ -130,6 +130,7 @@ from pathlib import Path
 from nicegui import run, ui
 
 import apply as genre_apply
+import config_editor
 import lexicon_client
 import mood_apply
 import mood_plan
@@ -318,11 +319,21 @@ def build_ui() -> None:
 
     with ui.row().classes("items-center justify-between w-full"):
         ui.label("Track Record").classes("text-xl font-bold")
-        with ui.button(icon="notifications").props("flat round dense"):
-            notif_badge = ui.badge("0", color="red").props("floating")
-            with ui.menu():
-                with ui.column().classes("p-3 gap-2 w-[28rem] max-h-96 overflow-y-auto") as notif_list:
-                    pass
+        with ui.row().classes("items-center gap-0"):
+            # Settings is per-DJ config tuning (a handful of numbers,
+            # touched rarely), not a workflow the way Tagging/Reorganize
+            # are - a gear-icon dialog next to this same header fits it
+            # better than a third full-screen view with its own back
+            # button. Click handler wired up further down (open_settings_dialog
+            # is defined after review_section/reorg_section exist, same
+            # forward-reference-via-already-positioned-button trick as
+            # the Tagging/Reorganize nav row above).
+            settings_button = ui.button(icon="settings").props("flat round dense")
+            with ui.button(icon="notifications").props("flat round dense"):
+                notif_badge = ui.badge("0", color="red").props("floating")
+                with ui.menu():
+                    with ui.column().classes("p-3 gap-2 w-[28rem] max-h-96 overflow-y-auto") as notif_list:
+                        pass
 
     def render_notifications() -> None:
         notif_list.clear()
@@ -1424,6 +1435,150 @@ def build_ui() -> None:
 
     generate_button.on_click(generate)
     stop_button.on_click(request_stop)
+
+    # Settings - per-DJ tuning of source_weights.yaml/mood_weights.yaml
+    # (weights, auto-include thresholds, new_tag_category), previously
+    # only editable by hand in a text editor. Loads its own fresh copy
+    # of each file via config_editor's ruamel round-trip load (not
+    # scoring.load_weights()'s plain pyyaml, used elsewhere in this file
+    # only for reading) every time the dialog opens - the whole point of
+    # ruamel here is that Save can't strip the files' own explanatory
+    # comments the way a plain pyyaml.dump() would. Always reloads
+    # rather than caching between opens; a single DJ running one
+    # instance of this app was never going to hit a stale-data problem
+    # worth guarding against.
+    def _make_number_setter(data, key, is_int: bool):
+        def setter(e) -> None:
+            data[key] = int(round(e.value)) if is_int else round(float(e.value), 4)
+
+        return setter
+
+    def _render_weights_card(container, path: Path, title: str, description: str) -> None:
+        with container, ui.card().classes("w-full"):
+            ui.label(title).classes("font-bold")
+            ui.label(description).classes("text-xs text-gray-500 mb-2")
+            try:
+                data = config_editor.load(path)
+            except Exception as e:
+                ui.label(f"Couldn't load {path.name}: {e}").classes("text-red-600 text-sm")
+                return
+
+            sources = data.get("sources") or {}
+            if sources:
+                ui.label("Source weights").classes("text-xs text-gray-500 mt-1")
+                for key, val in sources.items():
+                    with ui.row().classes("items-center gap-2 w-full"):
+                        ui.label(key).classes("text-sm w-60")
+                        ui.number(value=val, min=0, max=1, step=0.05, format="%.2f").classes(
+                            "w-28"
+                        ).props("dense outlined").on_value_change(
+                            _make_number_setter(sources, key, isinstance(val, int))
+                        )
+
+            auto_include = data.get("auto_include") or {}
+            if auto_include:
+                ui.label("Auto-include").classes("text-xs text-gray-500 mt-2")
+                for key, val in auto_include.items():
+                    is_int = isinstance(val, int)
+                    with ui.row().classes("items-center gap-2 w-full"):
+                        ui.label(key).classes("text-sm w-60")
+                        ui.number(
+                            value=val,
+                            min=0,
+                            max=None if is_int else 1,
+                            step=1 if is_int else 0.05,
+                            format="%d" if is_int else "%.2f",
+                        ).classes("w-28").props("dense outlined").on_value_change(
+                            _make_number_setter(auto_include, key, is_int)
+                        )
+
+            if "low_confidence_threshold" in data:
+                with ui.row().classes("items-center gap-2 w-full mt-2"):
+                    ui.label("low_confidence_threshold").classes("text-sm w-60")
+                    ui.number(
+                        value=data["low_confidence_threshold"], min=0, max=1, step=0.05, format="%.2f"
+                    ).classes("w-28").props("dense outlined").on_value_change(
+                        _make_number_setter(data, "low_confidence_threshold", False)
+                    )
+
+            if "new_tag_category" in data:
+                with ui.row().classes("items-center gap-2 w-full mt-2"):
+                    ui.label("new_tag_category").classes("text-sm w-60")
+                    try:
+                        category_labels = sorted(c["label"] for c in lexicon_client.fetch_categories())
+                    except Exception:
+                        category_labels = None
+                    current = data.get("new_tag_category") or ""
+                    if category_labels is not None:
+                        options = [""] + category_labels
+                        if current and current not in options:
+                            options.append(current)  # e.g. renamed/deleted in Lexicon since - keep it visible, not silently dropped
+                        category_input = ui.select(options, value=current, with_input=True, clearable=True).classes("w-60")
+                    else:
+                        category_input = ui.input(value=current).classes("w-60")
+
+                    def _on_category_change(e) -> None:
+                        data["new_tag_category"] = e.value or ""
+
+                    category_input.on_value_change(_on_category_change)
+
+            def save() -> None:
+                try:
+                    config_editor.save(path, data)
+                except Exception as e:
+                    notify(f"Couldn't save {path.name}: {e}", type="negative")
+                    return
+                # genre_weights/mood_weights are read once at startup
+                # (only for the "cleared the N% bar" badge text) -
+                # refresh them in place so a saved change is reflected
+                # without needing to restart the app, same as
+                # new_tag_category's own no-restart-needed behavior.
+                if path == scoring.DEFAULT_WEIGHTS_PATH:
+                    genre_weights.clear()
+                    genre_weights.update(scoring.load_weights())
+                elif path == mood_plan.WEIGHTS_PATH:
+                    mood_weights.clear()
+                    mood_weights.update(scoring.load_weights(mood_plan.WEIGHTS_PATH))
+                review_section.refresh()
+                notify(f"Saved {path.name}")
+
+            ui.button("Save", on_click=save).props("outline dense").classes("mt-2")
+
+    async def open_settings_dialog() -> None:
+        with ui.dialog() as dialog, ui.card().classes("w-[40rem] max-w-full gap-3"):
+            with ui.row().classes("items-center justify-between w-full"):
+                ui.label("Settings").classes("text-lg font-bold")
+                ui.button(icon="close", on_click=dialog.close).props("flat round dense")
+            ui.label(
+                "Per-DJ retuning of how tags get scored and auto-included - see each "
+                "file's own comments (config/source_weights.yaml, config/mood_weights.yaml) "
+                "for the full reasoning behind these numbers."
+            ).classes("text-xs text-gray-500")
+            _render_weights_card(
+                ui.column().classes("w-full"),
+                scoring.DEFAULT_WEIGHTS_PATH,
+                "Genre / Subgenre",
+                "Discogs, plus two independent audio models.",
+            )
+            _render_weights_card(
+                ui.column().classes("w-full"),
+                mood_plan.WEIGHTS_PATH,
+                "Mood / Theme",
+                "Only one source right now - the local mood/theme audio model.",
+            )
+        # Same await-the-dialog idiom as every confirm dialog elsewhere
+        # in this file (reset_scan_progress, create_missing_categories,
+        # apply_reorg, generate's discard-unsaved-changes prompt) -
+        # dialog.open() alone (a plain sync call outside that idiom)
+        # was tried first and silently never showed anything on screen;
+        # __await__ is what actually flips this dialog's value to True
+        # on the frontend. No submit() call needed here since there's
+        # nothing to return - the × button's dialog.close() (or ESC, or
+        # a backdrop click, both on by default) sets value back to
+        # False, which is what resolves this await either way.
+        await dialog
+
+    settings_button.on_click(open_settings_dialog)
 
 
 def main():

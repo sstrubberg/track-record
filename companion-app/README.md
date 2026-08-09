@@ -152,6 +152,24 @@ Lexicon's own UI to resolve by hand. See the top-level README's
 empty category is safe even though this project is otherwise strict
 about never creating one on a DJ's behalf.
 
+## Settings
+
+A gear icon in the header (next to the notification bell) opens a
+dialog for retuning `config/source_weights.yaml` (Genre/Subgenre) and
+`config/mood_weights.yaml` (Mood/Theme) without hand-editing YAML:
+each fetch source's weight, the auto-include thresholds
+(`min_agreeing_sources`/`min_confidence`), `low_confidence_threshold`,
+and `new_tag_category` (a searchable dropdown of your real Lexicon
+Custom Tag categories, since that value only ever matters as a label
+Track Record looks up by name). Each file has its own "Save," and a
+save takes effect immediately - no restart needed, next "Generate
+Plan" already uses it. Written via `config_editor.py`'s round-trip
+YAML (`ruamel.yaml`, not the plain `pyyaml` used for reading
+elsewhere) specifically so saving a value never strips the
+explanatory comments both files are full of - editing by hand in a
+text editor still works exactly as before and remains fully supported
+for anything this dialog doesn't expose.
+
 ## Trying a fetch source directly
 
 Each module under `fetch/` is runnable on its own for a quick check
