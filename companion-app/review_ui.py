@@ -1219,7 +1219,7 @@ def build_ui() -> None:
                                 ).props("outline dense size=sm")
 
             if unmatched:
-                async def assign_unmatched(row: dict, family_key: str) -> None:
+                def _record_assignment(row: dict, family_key: str, family_canonical: str) -> None:
                     # Same keyed-by-normalized-name shape as
                     # resolved_ambiguous, but tracked separately (see
                     # state["reorg_manual_assignments"]'s own comment
@@ -1229,15 +1229,44 @@ def build_ui() -> None:
                     # family-self match already does, but plan_moves()
                     # suppresses needs_rename for anything reached
                     # through manual_assignments regardless.
-                    family_canonical = family_options[family_key]
                     norm = lexicon_client._normalize_label(row["label"])
                     state["reorg_manual_assignments"][norm] = (family_key, family_canonical, "__self__", family_canonical)
+
+                async def assign_unmatched(row: dict, family_key: str) -> None:
+                    family_canonical = family_options[family_key]
+                    _record_assignment(row, family_key, family_canonical)
                     if await refresh_reorg_plan():
                         notify(f"\"{row['label']}\" assigned to {family_canonical}", type="positive")
+
+                async def bulk_assign_unmatched(rows: list[dict], family_key: str) -> None:
+                    family_canonical = family_options[family_key]
+                    for row in rows:
+                        _record_assignment(row, family_key, family_canonical)
+                    if await refresh_reorg_plan():
+                        notify(f"Assigned {len(rows)} tag(s) to {family_canonical}", type="positive")
 
                 by_cat: dict[str, list[dict]] = {}
                 for row in unmatched:
                     by_cat.setdefault(row["current_category"], []).append(row)
+
+                # A whole group's current category sometimes already IS
+                # a real family's own "Sub-genre - {Family}" convention
+                # (e.g. every tag currently sitting in "Sub-genre -
+                # Rock" is overwhelmingly likely to actually belong to
+                # the Rock family - it's just not in this taxonomy
+                # under that exact spelling) - offering one bulk button
+                # for that whole group turns 35 individual picks into
+                # one, while a genuinely mixed group (a DJ's own
+                # "Sub-genre - R&B" catch-all turned out to hold plenty
+                # of real Hip-Hop, confirmed directly) has no obvious
+                # single answer and simply gets no bulk button, falling
+                # back to the per-tag picker below - never forced,
+                # either way: a bulk assignment is still just a starting
+                # point, any individual tag can still be reassigned
+                # afterward via its own row.
+                category_to_family = {
+                    f"{reorganize_genres.CATEGORY_PREFIX}{canonical}": key for key, canonical in family_choices
+                }
 
                 with ui.expansion(f"Not in this taxonomy - needs your call ({len(unmatched)})", value=True).classes(
                     "w-full"
@@ -1250,7 +1279,14 @@ def build_ui() -> None:
                         "renamed - see the intro text above for why."
                     ).classes("text-xs text-gray-500 mb-2")
                     for cat, rows in sorted(by_cat.items(), key=lambda kv: -len(kv[1])):
-                        ui.label(f"{cat} ({len(rows)})").classes("text-xs font-medium text-gray-500 mt-2")
+                        with ui.row().classes("items-center gap-2 mt-2"):
+                            ui.label(f"{cat} ({len(rows)})").classes("text-xs font-medium text-gray-500")
+                            bulk_family_key = category_to_family.get(cat)
+                            if bulk_family_key is not None:
+                                ui.button(
+                                    f"Assign all {len(rows)} to {family_options[bulk_family_key]}",
+                                    on_click=lambda rows=rows, key=bulk_family_key: bulk_assign_unmatched(rows, key),
+                                ).props("outline dense size=sm")
                         for row in sorted(rows, key=lambda r: r["label"]):
                             with ui.row().classes("items-center gap-2"):
                                 ui.label(row["label"]).classes("text-sm")
