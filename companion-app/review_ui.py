@@ -573,7 +573,13 @@ def build_ui() -> None:
         # checkbox already uses.
         all_checked = bool(valid_keys) and all(state["checked"].get(key) for key in valid_keys)
         with ui.row().classes("items-center gap-2"):
-            ui.checkbox("Select all", value=all_checked, on_change=toggle_all)
+            # Bare "Select all" didn't say what it was all of - genre,
+            # mood, one track, every track, the visible page? It's
+            # actually every genre and mood candidate row across the
+            # whole plan (see toggle_all() above), independent of
+            # pagination - matching that in the label instead of
+            # leaving it to be inferred.
+            ui.checkbox("Select all tags (every track)", value=all_checked, on_change=toggle_all)
             ui.label(f"{len(tracks)} track(s) with proposed tags - high-confidence ones are pre-checked, review the rest").classes(
                 "text-gray-500"
             )
