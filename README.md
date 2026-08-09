@@ -327,20 +327,34 @@ itself does.
 
 A separate, later step - after a DJ has already applied/created a
 batch of genre tags via the review screen, not part of Generate/Apply
-itself. Available both as a CLI script and as its own collapsed
-"Reorganize Genre Tags" section in `review_ui.py`, below the main
-review list - "Check Genre Organization" runs the same report either
-way, with a checkbox per proposed move (all checked by default,
-uncheck any you disagree with) and a confirmed "Move Checked Tags"
-button. Deliberately not triggered automatically by Apply Tags - a
-batch category move is its own deliberate action, not a side effect of
-an unrelated click. `config/genre_taxonomy.yaml` (Discogs' own
-400-style family/subgenre structure - same taxonomy discogs-maest's
-classes already use, see its `_meta` block for the full schema) defines
-which canonical subgenre belongs to which family; moving a tag changes
-its Lexicon category to `Sub-genre - {Family}`, extending the same
-category-naming convention already in use for `Sub-genre -
-Electronic`/`Sub-genre - Rock`/etc.
+itself. Available both as a CLI script and as its own "Reorganize
+Genre Tags" section in `review_ui.py`, below the main review list -
+deliberately not triggered automatically by Apply Tags (a batch
+category move is its own deliberate action, not a side effect of an
+unrelated click), but the moment a genre tag actually lands in
+Lexicon, the section opens itself, scrolls into view, and runs Check
+Genre Organization's own logic automatically - a DJ reported the
+section quietly appearing below Apply Tags with "no clear indication
+of what to do next," so it now reads as the screen's next step rather
+than another collapsed accordion easy to miss. "Check Genre
+Organization" (or the CLI) reports what's blocked on a missing
+category, what's ambiguous, and what would move - in that order,
+deliberately: creating a missing category or resolving an ambiguous
+tag both feed directly into "would move" (see below), so a DJ pointed
+out the original order had things backwards, surfacing "would move"
+before the two things that would unblock more of it. "Would move" gets
+a checkbox per proposed move (all checked by default, uncheck any you
+disagree with) and a confirmed "Move Checked Tags" button.
+`config/genre_taxonomy.yaml` (Discogs' own 400-style family/subgenre
+structure - same taxonomy discogs-maest's classes already use, see its
+`_meta` block for the full schema) defines which canonical subgenre
+belongs to which family; moving a tag changes its Lexicon category to
+`Sub-genre - {Family}`, extending the same category-naming convention
+already in use for `Sub-genre - Electronic`/`Sub-genre - Rock`/etc. -
+each "would move" row shows both where a tag is coming from and a
+small "→ {Family}" chip for where it's going, rather than relying on
+the enclosing group's own header to carry that once you've scrolled a
+few rows down.
 
 "Active" isn't hand-curated in the taxonomy file (it ships with every
 family/subgenre `active: false`) - a family/subgenre counts as active

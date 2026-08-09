@@ -113,14 +113,19 @@ python mood_apply.py
 
 ## Reorganizing genre tags into families
 
-Available in `review_ui.py` itself - a collapsed "Reorganize Genre
-Tags" section below the main review list. "Check Genre Organization"
-reports what would move (grouped by target category, each with its own
-checkbox, all checked by default), plus what's blocked on a missing
-category, what's ambiguous, and what's outside this taxonomy entirely.
-"Move Checked Tags" applies just the checked ones, behind a
-confirmation dialog. Same CLI also still works standalone for the
-report/move part:
+Available in `review_ui.py` itself - a "Reorganize Genre Tags" section
+below the main review list that opens and populates itself
+automatically ("Check Genre Organization" run for you) the moment a
+genre tag actually lands in Lexicon, so it reads as the screen's next
+step rather than a collapsed accordion you might not notice. Reports,
+in this order, what's blocked on a missing category, what's ambiguous,
+and what would move (grouped by target category, each row showing
+where it's coming from and a "→ Family" chip for where it's going,
+each with its own checkbox, all checked by default) - category
+creation and ambiguous resolution both come first since they unblock
+more of "would move." "Move Checked Tags" applies just the checked
+ones, behind a confirmation dialog. Same CLI also still works
+standalone for the report/move part:
 
 ```
 python reorganize_genres.py              # report only, writes nothing
