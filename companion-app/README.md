@@ -119,7 +119,8 @@ reports what would move (grouped by target category, each with its own
 checkbox, all checked by default), plus what's blocked on a missing
 category, what's ambiguous, and what's outside this taxonomy entirely.
 "Move Checked Tags" applies just the checked ones, behind a
-confirmation dialog. Same CLI also still works standalone:
+confirmation dialog. Same CLI also still works standalone for the
+report/move part:
 
 ```
 python reorganize_genres.py              # report only, writes nothing
@@ -129,10 +130,17 @@ python reorganize_genres.py --apply       # actually move tags
 A later, separate step - after applying/creating a batch of genre tags,
 not triggered automatically by Apply Tags. Moves each existing tag
 matching `config/genre_taxonomy.yaml` (Discogs' 400-style
-family/subgenre list) into a `Sub-genre - {Family}` category - only
-categories that already exist; it never creates one, and never renames
-or merges tags. See the top-level README's "Reorganize" section for
-the full rationale.
+family/subgenre list) into a `Sub-genre - {Family}` category. A missing
+category can be created right there too - "Create Missing Categories"
+previews the exact names, confirms once, then creates them empty
+(review-screen only for now, no `--create-categories` CLI flag yet). Never renames a
+tag or merges tags either way. Ambiguous tags (a style name that
+genuinely belongs to more than one Discogs family) get clickable
+family choices in the same section instead of needing a trip to
+Lexicon's own UI to resolve by hand. See the top-level README's
+"Reorganize" section for the full rationale, including why creating an
+empty category is safe even though this project is otherwise strict
+about never creating one on a DJ's behalf.
 
 ## Trying a fetch source directly
 

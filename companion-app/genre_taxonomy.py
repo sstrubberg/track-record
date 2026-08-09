@@ -45,8 +45,12 @@ def build_lookup(taxonomy: dict) -> tuple[dict[str, tuple[str, str, str, str]], 
     new key on their own - this mostly exists for whichever of
     beatport/spotify/musicbrainz have been filled in.
 
-    ambiguous: {normalized_name: [(family_canonical, subgenre_canonical), ...]}
-    - a real, non-buggy property of Discogs' own taxonomy, not a data
+    ambiguous: {normalized_name: [(family_key, family_canonical, subgenre_key,
+    subgenre_canonical), ...]} - same 4-tuple shape as a `lookup` value,
+    not just the display pair, so a DJ's explicit choice among these
+    candidates (see reorganize_genres.plan_moves()'s resolved_ambiguous
+    param) can be dropped straight into `lookup` with no reshaping.
+    A real, non-buggy property of Discogs' own taxonomy, not a data
     error to paper over: the same style name genuinely appears under
     more than one family (e.g. "Disco" is both an Electronic style and
     a Funk/Soul style; "Electro" is both Electronic and Hip Hop).
@@ -76,7 +80,7 @@ def build_lookup(taxonomy: dict) -> tuple[dict[str, tuple[str, str, str, str]], 
         # identical discogs_maest alias) is not.
         distinct_families = {e[1] for e in entries}
         if len(distinct_families) > 1:
-            ambiguous[norm_name] = sorted({(e[1], e[3]) for e in entries})
+            ambiguous[norm_name] = sorted(set(entries), key=lambda e: (e[1], e[3]))
         else:
             lookup[norm_name] = entries[0]
     return lookup, ambiguous

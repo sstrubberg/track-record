@@ -9,20 +9,26 @@ before this script existed - categories named "Sub-genre - Electronic",
 "Sub-genre - Rock", "Sub-genre - Pop", "Sub-genre - R&B", a flat
 "Genre" catch-all, and a standalone "Reggae" category. This script
 looks for that same convention ("Sub-genre - {Family}") for the rest
-of the Discogs 400-style family list too - but per this project's own
-established rule (see the top-level README's "Apply" section:
-"never creates a new category on the user's behalf"), it never creates
-a "Sub-genre - {Family}" category that doesn't already exist. A
-family with matching tags but no such category yet is reported
-separately ("needs a category"), not silently created - creating the
-category by hand in Lexicon first is a one-time, deliberate step this
-script leaves to the DJ.
+of the Discogs 400-style family list too. A family with matching tags
+but no such category yet is reported separately ("needs a category"),
+not silently created as a side effect of a move - but unlike the main
+Genre/Subgenre review flow's rule (apply.py never creates a category
+as a side effect of approving a new tag), this module can create one
+via create_categories(), a separate, explicit, previewed, confirmed
+action (review_ui.py's "Create Categories" button, or plan a category
+list yourself and call it directly). That's deliberate, not an
+oversight: an empty category is safe and fully reversible on its own
+(see lexicon_client.create_category()'s own docstring) - the actual
+risk is generic to Lexicon's own category deletion once tags have
+moved into it, already gated behind apply_moves()'s own confirmation,
+unrelated to who created the category in the first place.
 
-Deliberately scoped to *moving tags between categories only* - never
-renames a tag's label and never merges two tags into one. Both of
-those touch more than a tag's own metadata (a rename changes what a DJ
-sees everywhere that tag is applied; a merge means re-pointing every
-track that carries the old tag and then deleting it) - a bigger,
+Deliberately scoped to *moving tags between categories* (and, given
+explicit confirmation, creating the categories to move them into) -
+never renames a tag's label and never merges two tags into one. Both
+of those touch more than a tag's own metadata (a rename changes what a
+DJ sees everywhere that tag is applied; a merge means re-pointing
+every track that carries the old tag and then deleting it) - a bigger,
 separate decision than "which category does this already-correct tag
 live in," left for later if it's ever wanted.
 
@@ -37,7 +43,10 @@ source alias).
 A subgenre name that genuinely belongs to more than one family in the
 Discogs taxonomy itself (e.g. "Disco" is both an Electronic style and
 a Funk/Soul style - see genre_taxonomy.build_lookup()'s docstring for
-the full list) is reported separately as ambiguous, never auto-resolved.
+the full list) is reported separately as ambiguous, never auto-resolved
+- plan_moves()'s resolved_ambiguous param takes a DJ's explicit pick
+instead (review_ui.py's Ambiguous section offers this as clickable
+choices).
 
 Always a dry run - reports what WOULD move, changes nothing - unless
 --apply is passed, same convention as billboard_tag.py/apply.py's own
@@ -63,12 +72,30 @@ import lexicon_client
 CATEGORY_PREFIX = "Sub-genre - "
 
 
-def plan_moves() -> dict:
+def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None = None) -> dict:
     """Read-only: fetches the live library's tags/categories and the
     taxonomy, and returns everything a report or an apply pass needs.
-    Never writes anything itself."""
+    Never writes anything itself.
+
+    resolved_ambiguous, if given: {normalized_tag_name: (family_key,
+    family_canonical, subgenre_key, subgenre_canonical)} - a DJ's
+    explicit pick among an ambiguous name's candidate families (see
+    genre_taxonomy.build_lookup()'s own docstring for why some names
+    are ambiguous in the first place). Merged straight into the
+    unambiguous lookup before matching runs, so a resolved name flows
+    through the exact same moves/already_correct/needs_category
+    bucketing as any other match - resolving isn't a separate code
+    path, just a DJ-supplied answer to a question the taxonomy alone
+    couldn't answer. Keyed by normalized name (not a specific Lexicon
+    tag id), since the ambiguity is a taxonomy-level fact - "Disco
+    belongs to Electronic" applies to that name everywhere it shows up.
+    """
     taxonomy = genre_taxonomy.load_taxonomy()
     lookup, ambiguous_names = genre_taxonomy.build_lookup(taxonomy)
+    for norm_name, choice in (resolved_ambiguous or {}).items():
+        if norm_name in ambiguous_names:
+            lookup[norm_name] = choice
+            del ambiguous_names[norm_name]
     tags, category_labels = lexicon_client.fetch_tags_with_categories()
     label_to_category_id = {label: cid for cid, label in category_labels.items()}
 
@@ -194,6 +221,30 @@ def apply_moves(moves: list[dict]) -> dict:
             ok += 1
         else:
             failures.append({"label": row["label"], "id": row["id"], "error": f"HTTP {r.status_code} {r.text[:150]}"})
+    return {"ok": ok, "failures": failures}
+
+
+def create_categories(labels: list[str]) -> dict:
+    """Actually create each given category (each starts empty - see
+    lexicon_client.create_category()'s own docstring for why that
+    makes this safe and reversible on its own). Returns {"ok":
+    [{"label", "id"}, ...], "failures": [{"label", "error"}, ...]} -
+    structured the same way apply_moves() is, for the same reason
+    (review_ui.py reports this as a notification, not stdout).
+
+    Callers should only ever pass labels plan_moves() has already
+    confirmed have no matching category yet (its own needs_category
+    bucket) - this function doesn't re-check that itself, so calling
+    it twice for the same label would create a duplicate category
+    rather than erroring."""
+    ok = []
+    failures = []
+    for label in labels:
+        try:
+            category_id = lexicon_client.create_category(label)
+            ok.append({"label": label, "id": category_id})
+        except requests.RequestException as e:
+            failures.append({"label": label, "error": str(e)})
     return {"ok": ok, "failures": failures}
 
 

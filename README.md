@@ -347,14 +347,35 @@ family/subgenre `active: false`) - a family/subgenre counts as active
 here if at least one existing Lexicon tag's label already matches it,
 computed fresh from the live library every run.
 
-Same "never creates a category on the user's behalf" rule as Apply
-above - a family with matching tags but no `Sub-genre - {Family}`
-category yet is reported, not created; create it by hand in Lexicon
-first, then rerun. A subgenre name genuinely shared by more than one
-family in Discogs' own taxonomy (`Disco` is both an Electronic style
-and a Funk/Soul style, `Electro` is both Electronic and Hip Hop, and
-14 more) is reported as ambiguous rather than auto-resolved either
-way. Scoped to moving tags between categories only - never renames a
+A family with matching tags but no `Sub-genre - {Family}` category yet
+is reported separately ("needs a category created first") rather than
+silently created as a side effect of a move - but unlike Apply above
+(which never creates a category as a side effect of approving a new
+tag), the review screen's "Create Categories" button can create these,
+each starting empty, behind its own preview (the exact category names)
+and confirmation. That's a deliberate difference, not an
+inconsistency: creating an empty category is safe and fully reversible
+on its own (confirmed against Lexicon's own API - `POST /tag-category`
+just needs a `label`, nothing else touched) - the real risk is generic
+to Lexicon's own category deletion once tags have actually moved into
+it (`DELETE /tag-category` warns *"This will delete all Custom Tags in
+this category"*), which is already gated behind "Move Checked Tags"'s
+own confirmation regardless of who created the category. The CLI
+doesn't expose category creation - `reorganize_genres.create_categories()`
+exists as a plain function for it, but the interactive
+preview-and-confirm flow is review-screen only for now.
+
+A subgenre name genuinely shared by more than one family in Discogs'
+own taxonomy (`Disco` is both an Electronic style and a Funk/Soul
+style, `Electro` is both Electronic and Hip Hop, and 14 more) is
+reported as ambiguous rather than auto-resolved either way - the
+review screen's Ambiguous section offers each one as clickable family
+choices instead, so resolving it happens in the same place as
+everything else instead of requiring a trip to Lexicon's own UI;
+picking one just answers the question a DJ, not the taxonomy, has to
+answer, and the resolved tag then flows through the same
+moves/needs-category bucketing as anything else. Scoped to moving (and,
+with confirmation, creating categories to move into) - never renames a
 label or merges two tags into one; both are bigger, separate decisions
 than "which category does this already-correct tag live in."
 

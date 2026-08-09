@@ -272,6 +272,12 @@ def build_ui() -> None:
         # genre_plan/mood_plan rows have).
         "reorg_plan": None,
         "reorg_checked": {},
+        # A DJ's explicit picks for ambiguous tags (see
+        # reorganize_genres.plan_moves()'s resolved_ambiguous param) -
+        # keyed by normalized tag name, kept across re-checks within
+        # the session so resolving "Disco" once doesn't need
+        # re-resolving every time Check Genre Organization reruns.
+        "reorg_ambiguous_resolved": {},
     }
     progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
@@ -912,20 +918,29 @@ def build_ui() -> None:
     ).classes("w-full mt-4"):
         ui.label(
             "Moves existing genre tags into per-family categories (config/genre_taxonomy.yaml) "
-            "based on Discogs' own genre taxonomy. Never creates a category, renames a tag, or "
-            "merges tags - see the README's \"Reorganize\" section for the full rationale."
+            "based on Discogs' own genre taxonomy. Missing categories can be created here too, "
+            "with a preview and confirmation first - never renames a tag or merges tags, though; "
+            "see the README's \"Reorganize\" section for the full rationale."
         ).classes("text-xs text-gray-500 mb-2")
 
         reorg_status = ui.label("").classes("text-sm text-gray-500")
 
-        async def check_reorg() -> None:
-            reorg_status.text = "checking..."
+        async def refresh_reorg_plan() -> bool:
+            """Re-runs plan_moves() (with whatever ambiguous tags have
+            already been resolved this session) and updates state -
+            shared by the initial "Check Genre Organization" click,
+            the post-move re-check, the post-create-categories
+            re-check, and each ambiguous resolution, so all four stay
+            in sync with exactly the same logic rather than four
+            slightly-different copies of it. Returns whether it
+            succeeded, so a caller mid-action (e.g. after just
+            resolving one ambiguous tag) knows whether to still show
+            its own success notification."""
             try:
-                plan = await run.io_bound(reorganize_genres.plan_moves)
+                plan = await run.io_bound(reorganize_genres.plan_moves, state["reorg_ambiguous_resolved"])
             except Exception as e:
                 notify(f"Couldn't check genre organization: {e}", type="negative")
-                reorg_status.text = ""
-                return
+                return False
             state["reorg_plan"] = plan
             # Same setdefault-then-prune pattern as the main review
             # list above - a move stays checked/unchecked across a
@@ -936,8 +951,13 @@ def build_ui() -> None:
                     del state["reorg_checked"][tag_id]
             for row in plan["moves"]:
                 state["reorg_checked"].setdefault(row["id"], True)
-            reorg_status.text = ""
             reorg_section.refresh()
+            return True
+
+        async def check_reorg() -> None:
+            reorg_status.text = "checking..."
+            await refresh_reorg_plan()
+            reorg_status.text = ""
 
         ui.button("Check Genre Organization", on_click=check_reorg).props("outline")
 
@@ -1028,8 +1048,7 @@ def build_ui() -> None:
                     # Re-check from Lexicon so the section reflects
                     # what's now actually true (moved tags fall out of
                     # "would move" and into "already correct").
-                    state["reorg_plan"] = await run.io_bound(reorganize_genres.plan_moves)
-                    reorg_section.refresh()
+                    await refresh_reorg_plan()
 
                 ui.button("Move Checked Tags", on_click=apply_reorg).props("color=primary").classes("mt-2")
 
@@ -1037,11 +1056,46 @@ def build_ui() -> None:
                 by_family: dict[str, list[dict]] = {}
                 for row in needs_category:
                     by_family.setdefault(row["target_category"], []).append(row)
+
+                async def create_missing_categories(targets=tuple(sorted(by_family.keys()))) -> None:
+                    with ui.dialog() as confirm_dialog, ui.card():
+                        ui.label(
+                            f"Create {len(targets)} new categor{'y' if len(targets) == 1 else 'ies'} in "
+                            f"Lexicon?"
+                        )
+                        with ui.column().classes("gap-0 my-2"):
+                            for t in targets:
+                                ui.label(f"• {t}").classes("text-sm")
+                        ui.label(
+                            "Each starts empty - nothing moves into it until you check it under "
+                            "\"Would move\" and click \"Move Checked Tags\" separately."
+                        ).classes("text-xs text-gray-500")
+                        with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                            ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
+                            ui.button(
+                                "Create Categories", color="primary",
+                                on_click=lambda: confirm_dialog.submit("continue"),
+                            )
+                    if await confirm_dialog != "continue":
+                        return
+                    result = await run.io_bound(reorganize_genres.create_categories, list(targets))
+                    msg = f"Created {len(result['ok'])} categor{'y' if len(result['ok']) == 1 else 'ies'}"
+                    if result["failures"]:
+                        names = ", ".join(f"{f['label']!r} ({f['error']})" for f in result["failures"])
+                        msg += f" - {len(result['failures'])} failed: {names}"
+                    notify(msg, type="positive" if not result["failures"] else "warning")
+                    await refresh_reorg_plan()
+
                 with ui.expansion(f"Needs a category created first ({len(needs_category)})").classes("w-full"):
                     ui.label(
-                        "This project never creates a category on your behalf - create these in "
-                        "Lexicon yourself, then click \"Check Genre Organization\" again."
+                        "Create these in Lexicon yourself, then click \"Check Genre Organization\" "
+                        "again - or let Track Record create them (each starts empty; see the button "
+                        "below for exactly what that does)."
                     ).classes("text-xs text-gray-500 mb-2")
+                    ui.button(
+                        f"Create {len(by_family)} Missing Categor{'y' if len(by_family) == 1 else 'ies'}",
+                        on_click=create_missing_categories,
+                    ).props("outline dense size=sm").classes("mb-2")
                     for target, rows in sorted(by_family.items()):
                         ui.label(f"{target} ({len(rows)})").classes("text-sm font-medium mt-2")
                         # Chips instead of one long comma-joined line -
@@ -1055,7 +1109,24 @@ def build_ui() -> None:
                                 )
 
             if ambiguous:
+                async def resolve_ambiguous(row: dict, choice: tuple[str, str, str, str]) -> None:
+                    # Keyed by normalized name, not this row's own tag
+                    # id - see plan_moves()'s resolved_ambiguous
+                    # docstring for why: the ambiguity is a fact about
+                    # the taxonomy, not this one Lexicon tag, so
+                    # resolving it applies to every tag sharing this
+                    # name.
+                    norm = lexicon_client._normalize_label(row["label"])
+                    state["reorg_ambiguous_resolved"][norm] = choice
+                    if await refresh_reorg_plan():
+                        notify(f"\"{row['label']}\" resolved to {choice[1]} ({choice[3]})", type="positive")
+
                 with ui.expansion(f"Ambiguous - needs your call ({len(ambiguous)})").classes("w-full"):
+                    ui.label(
+                        "Pick which family each of these actually belongs to - the same style name "
+                        "genuinely exists in more than one Discogs family, so this isn't guessable "
+                        "automatically. Resolving one applies to every tag sharing that name."
+                    ).classes("text-xs text-gray-500 mb-2")
                     for row in ambiguous:
                         with ui.row().classes("items-center gap-2 mt-1"):
                             ui.label(row["label"]).classes("text-sm font-medium")
@@ -1063,10 +1134,12 @@ def build_ui() -> None:
                                 "text-xs text-gray-500"
                             )
                         with ui.row().classes("gap-1 flex-wrap ml-1 mb-1"):
-                            for fam, sub in row["candidates"]:
-                                ui.label(f"{fam} ({sub})").classes(
-                                    "text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5"
-                                )
+                            for choice in row["candidates"]:
+                                family_canonical, subgenre_canonical = choice[1], choice[3]
+                                ui.button(
+                                    f"{family_canonical} ({subgenre_canonical})",
+                                    on_click=lambda row=row, choice=choice: resolve_ambiguous(row, choice),
+                                ).props("outline dense size=sm")
 
             if unmatched:
                 with ui.expansion(f"Not in this taxonomy ({len(unmatched)}) - left alone").classes("w-full"):
