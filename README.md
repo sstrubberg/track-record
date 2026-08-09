@@ -327,24 +327,29 @@ itself does.
 
 A separate, later step - after a DJ has already applied/created a
 batch of genre tags via the review screen, not part of Generate/Apply
-itself. Available both as a CLI script and as its own "Reorganize
-Genre Tags" section in `review_ui.py`, below the main review list -
-deliberately not triggered automatically by Apply Tags (a batch
-category move is its own deliberate action, not a side effect of an
-unrelated click), but the moment a genre tag actually lands in
-Lexicon, the section opens itself, scrolls into view, and runs Check
-Genre Organization's own logic automatically - a DJ reported the
-section quietly appearing below Apply Tags with "no clear indication
-of what to do next," so it now reads as the screen's next step rather
-than another collapsed accordion easy to miss. "Check Genre
-Organization" (or the CLI) reports what's blocked on a missing
-category, what's ambiguous, and what would move - in that order,
-deliberately: creating a missing category or resolving an ambiguous
-tag both feed directly into "would move" (see below), so a DJ pointed
-out the original order had things backwards, surfacing "would move"
-before the two things that would unblock more of it. "Would move" gets
-a checkbox per proposed move (all checked by default, uncheck any you
-disagree with) and a confirmed "Move Checked Tags" button.
+itself. Available both as a CLI script and as its own view in
+`review_ui.py`, reached via a persistent "Reorganize Genre Tags →" nav
+button and left again via "← Back to Tagging" - a genuinely separate
+screen sharing the same session, not a section stacked below Apply
+Tags. Reachable any time, not gated behind having just applied
+anything this session (whatever's already in Lexicon is fair game to
+check and reorganize) - though save() still refreshes Reorganize's own
+data in the background the moment a genre tag actually lands in
+Lexicon, so switching over already shows current results rather than
+needing its own click first. This replaced an earlier design where
+Reorganize was a collapsed accordion that only appeared post-Apply and
+auto-opened/scrolled into view - a DJ found that still didn't read as
+a real "next step" and wanted Tagging and Reorganize to feel like "two
+separate but connected workflows" with real navigation between them,
+not a page you scroll further down. "Check Genre Organization" (or the
+CLI) reports what's blocked on a missing category, what's ambiguous,
+and what would move - in that order, deliberately: creating a missing
+category or resolving an ambiguous tag both feed directly into "would
+move" (see below), so a DJ pointed out the original order had things
+backwards, surfacing "would move" before the two things that would
+unblock more of it. "Would move" gets a checkbox per proposed move
+(all checked by default, uncheck any you disagree with) and a
+confirmed "Move Checked Tags" button.
 `config/genre_taxonomy.yaml` (Discogs' own 400-style family/subgenre
 structure - same taxonomy discogs-maest's classes already use, see its
 `_meta` block for the full schema) defines which canonical subgenre

@@ -113,11 +113,16 @@ python mood_apply.py
 
 ## Reorganizing genre tags into families
 
-Available in `review_ui.py` itself - a "Reorganize Genre Tags" section
-below the main review list that opens and populates itself
-automatically ("Check Genre Organization" run for you) the moment a
-genre tag actually lands in Lexicon, so it reads as the screen's next
-step rather than a collapsed accordion you might not notice. Reports,
+Available in `review_ui.py` as its own view - a persistent "Reorganize
+Genre Tags →" button at the top switches over to it, "← Back to
+Tagging" switches back. A genuinely separate screen sharing the same
+session, not a section stacked below Apply Tags, and reachable any
+time - not gated behind having just applied anything this session.
+The first time you ever switch over, it runs "Check Genre
+Organization" for you automatically; save() also refreshes its data
+quietly in the background the moment a genre tag lands in Lexicon, so
+switching over after applying a batch already shows current results.
+Reports,
 in this order, what's blocked on a missing category, what's ambiguous,
 and what would move (grouped by target category, each row showing
 where it's coming from and a "→ Family" chip for where it's going,
