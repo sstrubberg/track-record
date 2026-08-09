@@ -62,6 +62,24 @@ def build_lookup(taxonomy: dict) -> tuple[dict[str, tuple[str, str, str, str]], 
     seen: dict[str, list[tuple[str, str, str, str]]] = {}
     for family_key, family in (taxonomy.get("genre_families") or {}).items():
         family_canonical = family.get("canonical") or family_key
+        # A bare tag whose name matches a family's own canonical name
+        # is itself a candidate, registered the same way a subgenre
+        # entry is - e.g. a tag simply named "Hip Hop" most naturally
+        # means the genre Hip Hop, but Discogs' own real taxonomy also
+        # genuinely lists "Hip Hop" as a style tag under Electronic
+        # (not a data error - a real overlap, same shape as "Disco"
+        # being both an Electronic and a Funk/Soul style). Without
+        # this, that second, buried entry was the *only* candidate
+        # "Hip Hop" ever matched, so it silently won by being the only
+        # option found - reported directly (moved into Sub-genre -
+        # Electronic, which a DJ correctly didn't expect). Registering
+        # the family-self match here lets it compete through the exact
+        # same ambiguity detection as any other genuinely-shared name,
+        # subgenre_key "__self__" marking that this candidate points at
+        # the family's own category rather than one of its subgenres.
+        seen.setdefault(_normalize_label(family_canonical), []).append(
+            (family_key, family_canonical, "__self__", family_canonical)
+        )
         for subgenre_key, subgenre in (family.get("subgenres") or {}).items():
             subgenre_canonical = subgenre.get("canonical") or subgenre_key
             names = {subgenre_canonical}
