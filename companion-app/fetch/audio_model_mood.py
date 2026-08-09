@@ -169,7 +169,24 @@ def fetch_moods(audio_path: str) -> list[dict]:
         if prob < MIN_PROBABILITY:
             continue
         candidates.append({
-            "tag": cls,
+            # MTG-Jamendo's own metadata JSON ships every one of these
+            # 56 class names all-lowercase ("love", "melodic",
+            # "energetic", ...) - that's genuinely the model's only
+            # spelling, not a display-time truncation, and this is the
+            # only source Mood/Theme has, so nothing downstream ever
+            # sees an already-Title-Case version to prefer instead
+            # (contrast fetch/discogs.py, already Title Case, and
+            # scoring.py's _PREFERRED_TAG_SOURCES, which exists for
+            # exactly this kind of cross-source casing conflict but
+            # has nothing to prefer here). Lexicon's own existing Mood
+            # tags (hand-created by the DJ before Track Record existed)
+            # are Title Case, so a newly-created tag left lowercase
+            # would sit out of step with every tag beside it in the
+            # UI. Case-only, so it can't create an unwanted duplicate:
+            # apply.py's resolve_tag_id()/lexicon_client._normalize_label()
+            # both already match case-insensitively against Lexicon's
+            # real tags, same as before this line existed.
+            "tag": cls.title(),
             "score": float(prob),
             "source": "audio_model_mood",
             "url": None,
