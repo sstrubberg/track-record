@@ -984,7 +984,21 @@ def build_ui() -> None:
                             with ui.row().classes("items-center gap-2"):
                                 cb = ui.checkbox(value=state["reorg_checked"].get(key, True)).props("dense")
                                 cb.on_value_change(lambda e, key=key: state["reorg_checked"].__setitem__(key, e.value))
-                                ui.label(f"{row['label']}   {row['current_category']} → {target}").classes("text-sm")
+                                # Tag name gets its own visual weight;
+                                # current category is secondary/muted -
+                                # target isn't repeated per row at all
+                                # (it's already this whole group's own
+                                # header), which was the main source of
+                                # "Acid Jazz Sub-genre - R&B → Sub-genre
+                                # - Electronic" reading as one run-on
+                                # wall of text.
+                                ui.label(row["label"]).classes("text-sm font-medium")
+                                if row["current_category"] != "(no category)":
+                                    ui.label(f"from {row['current_category']}").classes(
+                                        "text-xs text-gray-500"
+                                    )
+                                else:
+                                    ui.label("uncategorized").classes("text-xs text-gray-400 italic")
 
                 async def apply_reorg() -> None:
                     to_apply = [row for row in moves if state["reorg_checked"].get(row["id"], True)]
@@ -1027,16 +1041,32 @@ def build_ui() -> None:
                     ui.label(
                         "This project never creates a category on your behalf - create these in "
                         "Lexicon yourself, then click \"Check Genre Organization\" again."
-                    ).classes("text-xs text-gray-500 mb-1")
+                    ).classes("text-xs text-gray-500 mb-2")
                     for target, rows in sorted(by_family.items()):
-                        names = ", ".join(row["label"] for row in rows)
-                        ui.label(f"{target}: {names}").classes("text-sm")
+                        ui.label(f"{target} ({len(rows)})").classes("text-sm font-medium mt-2")
+                        # Chips instead of one long comma-joined line -
+                        # a family with 17 tags read as an unbroken wall
+                        # of text otherwise; wrapped chips scan the same
+                        # way a tag cloud does.
+                        with ui.row().classes("gap-1 flex-wrap mb-1"):
+                            for row in sorted(rows, key=lambda r: r["label"]):
+                                ui.label(row["label"]).classes(
+                                    "text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5"
+                                )
 
             if ambiguous:
                 with ui.expansion(f"Ambiguous - needs your call ({len(ambiguous)})").classes("w-full"):
                     for row in ambiguous:
-                        options = ", ".join(f"{fam} ({sub})" for fam, sub in row["candidates"])
-                        ui.label(f"{row['label']} (currently in {row['current_category']}): {options}").classes("text-sm")
+                        with ui.row().classes("items-center gap-2 mt-1"):
+                            ui.label(row["label"]).classes("text-sm font-medium")
+                            ui.label(f"currently in {row['current_category']}").classes(
+                                "text-xs text-gray-500"
+                            )
+                        with ui.row().classes("gap-1 flex-wrap ml-1 mb-1"):
+                            for fam, sub in row["candidates"]:
+                                ui.label(f"{fam} ({sub})").classes(
+                                    "text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5"
+                                )
 
             if unmatched:
                 with ui.expansion(f"Not in this taxonomy ({len(unmatched)}) - left alone").classes("w-full"):
