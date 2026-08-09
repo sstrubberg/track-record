@@ -122,35 +122,63 @@ The first time you ever switch over, it runs "Check Genre
 Organization" for you automatically; save() also refreshes its data
 quietly in the background the moment a genre tag lands in Lexicon, so
 switching over after applying a batch already shows current results.
-Reports,
-in this order, what's blocked on a missing category, what's ambiguous,
-and what would move (grouped by target category, each row showing
-where it's coming from and a "→ Family" chip for where it's going,
-each with its own checkbox, all checked by default) - category
-creation and ambiguous resolution both come first since they unblock
-more of "would move." "Move Checked Tags" applies just the checked
-ones, behind a confirmation dialog. Same CLI also still works
-standalone for the report/move part:
+Meant to work as a one-time foundation-building pass over years of
+hand-organized tags just as well as an ongoing "sort whatever's new"
+habit - it's the same scan either way, just re-run whenever.
+
+Reports, in this order, what's blocked on a missing category, what's
+ambiguous, what matches nothing in the taxonomy at all, and what would
+move or rename - category creation, ambiguous resolution, and manual
+placement of unmatched tags all come first since they unblock more of
+"would move"/"would rename." Only ever looks at tags whose current
+category is itself genre-like (`Sub-genre - *`, or your own
+pre-existing `Genre`/`Subgenre`/`Reggae` catch-alls) - Mood, Mix,
+Event, Timing, Era, and Charts tags are never in scope here.
+
+- **Would move** - grouped by target category, each row showing where
+  it's coming from and a "→ Family" chip for where it's going.
+- **Would rename** - a tag's name is already a taxonomy-recognized
+  spelling, just not spelled exactly that way ("hiphop" → "Hip Hop");
+  shown inline on a "would move" row if both apply, or in its own
+  section if the category's already correct. A manually-placed
+  unmatched tag (see below) is never a candidate for this - only a
+  genuine taxonomy match ever gets renamed.
+- **Needs a category created first** - "Create Missing Categories"
+  previews the exact names, confirms once, then creates them empty
+  (review-screen only for now, no `--create-categories` CLI flag yet).
+- **Ambiguous** - a style name genuinely belonging to more than one
+  Discogs family gets clickable family choices right in this section.
+- **Not in this taxonomy** - a tag matching nothing at all gets the
+  same kind of picker, except searchable across all 15 families (not
+  just a short candidate list), grouped by current category so similar
+  tags are easy to work through in a batch. Could be a custom label
+  you made up, or a real subgenre this taxonomy just doesn't list yet
+  - either way, picking a family here files it under `Sub-genre -
+  {Family}` without ever renaming it.
+
+Every checkbox (would move + would rename) is checked by default;
+"Apply Checked Changes" applies just the checked ones in one PATCH per
+tag, behind a confirmation dialog. Same CLI also still works
+standalone for the report/apply part (it applies moves and renames
+together; it has no interactive picker, so ambiguous/unmatched tags
+are always left for review_ui.py):
 
 ```
 python reorganize_genres.py              # report only, writes nothing
-python reorganize_genres.py --apply       # actually move tags
+python reorganize_genres.py --apply       # actually move/rename tags
 ```
 
 A later, separate step - after applying/creating a batch of genre tags,
 not triggered automatically by Apply Tags. Moves each existing tag
 matching `config/genre_taxonomy.yaml` (Discogs' 400-style
-family/subgenre list) into a `Sub-genre - {Family}` category. A missing
-category can be created right there too - "Create Missing Categories"
-previews the exact names, confirms once, then creates them empty
-(review-screen only for now, no `--create-categories` CLI flag yet). Never renames a
-tag or merges tags either way. Ambiguous tags (a style name that
-genuinely belongs to more than one Discogs family) get clickable
-family choices in the same section instead of needing a trip to
-Lexicon's own UI to resolve by hand. See the top-level README's
-"Reorganize" section for the full rationale, including why creating an
-empty category is safe even though this project is otherwise strict
-about never creating one on a DJ's behalf.
+family/subgenre list) into a `Sub-genre - {Family}` category, and
+renames it to match the taxonomy's own spelling if it isn't already
+spelled that way - never merges two tags into one, though. See the
+top-level README's "Reorganize" section for the full rationale,
+including why creating an empty category is safe even though this
+project is otherwise strict about never creating one on a DJ's behalf,
+and why a manually-placed tag is never a rename candidate the way a
+recognized taxonomy match is.
 
 ## Settings
 

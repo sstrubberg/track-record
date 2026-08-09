@@ -341,15 +341,26 @@ Reorganize was a collapsed accordion that only appeared post-Apply and
 auto-opened/scrolled into view - a DJ found that still didn't read as
 a real "next step" and wanted Tagging and Reorganize to feel like "two
 separate but connected workflows" with real navigation between them,
-not a page you scroll further down. "Check Genre Organization" (or the
-CLI) reports what's blocked on a missing category, what's ambiguous,
-and what would move - in that order, deliberately: creating a missing
-category or resolving an ambiguous tag both feed directly into "would
-move" (see below), so a DJ pointed out the original order had things
-backwards, surfacing "would move" before the two things that would
-unblock more of it. "Would move" gets a checkbox per proposed move
-(all checked by default, uncheck any you disagree with) and a
-confirmed "Move Checked Tags" button.
+not a page you scroll further down.
+
+Framed as a one-time foundation-building pass a DJ can run once to get
+years of hand-organized (and inevitably inconsistent) genre tags into
+real shape, not just an incremental "sort whatever's new" tool -
+though it's genuinely the same mechanism either way, since it always
+re-scans the live library fresh rather than remembering "first run vs.
+later." "Check Genre Organization" (or the CLI) reports what's blocked
+on a missing category, what's ambiguous, what matches nothing in the
+taxonomy at all, and what would move or rename - in that order,
+deliberately: creating a missing category, resolving an ambiguous tag,
+or placing an unmatched one all feed directly into "would
+move"/"would rename," so a DJ pointed out the original order had
+things backwards, surfacing "would move" before the things that would
+unblock more of it. Only ever considers tags whose *current* category
+is itself genre-like (`Sub-genre - *`, or one of a small set of the
+same DJ's own pre-existing genre catch-alls - `Genre`, `Subgenre`,
+`Reggae`) - Mood, Mix, Event, Timing, Era, and Charts tags were never
+in scope and don't show up anywhere in this screen.
+
 `config/genre_taxonomy.yaml` (Discogs' own 400-style family/subgenre
 structure - same taxonomy discogs-maest's classes already use, see its
 `_meta` block for the full schema) defines which canonical subgenre
@@ -359,7 +370,13 @@ already in use for `Sub-genre - Electronic`/`Sub-genre - Rock`/etc. -
 each "would move" row shows both where a tag is coming from and a
 small "→ {Family}" chip for where it's going, rather than relying on
 the enclosing group's own header to carry that once you've scrolled a
-few rows down.
+few rows down. A tag can also need renaming - its name is already a
+taxonomy-recognized spelling (its own canonical name or a listed
+source alias), just not spelled exactly that way ("hiphop" → "Hip
+Hop") - shown as a strikethrough-old → new-label pair, either inline
+on a "would move" row (both happen in one PATCH) or in its own "would
+rename only" section for a tag whose category is already correct.
+"Apply Checked Changes" covers both in one confirmed action.
 
 "Active" isn't hand-curated in the taxonomy file (it ships with every
 family/subgenre `active: false`) - a family/subgenre counts as active
@@ -378,11 +395,12 @@ on its own (confirmed against Lexicon's own API - `POST /tag-category`
 just needs a `label`, nothing else touched) - the real risk is generic
 to Lexicon's own category deletion once tags have actually moved into
 it (`DELETE /tag-category` warns *"This will delete all Custom Tags in
-this category"*), which is already gated behind "Move Checked Tags"'s
-own confirmation regardless of who created the category. The CLI
-doesn't expose category creation - `reorganize_genres.create_categories()`
-exists as a plain function for it, but the interactive
-preview-and-confirm flow is review-screen only for now.
+this category"*), which is already gated behind "Apply Checked
+Changes"'s own confirmation regardless of who created the category.
+The CLI doesn't expose category creation -
+`reorganize_genres.create_categories()` exists as a plain function for
+it, but the interactive preview-and-confirm flow is review-screen only
+for now.
 
 A subgenre name genuinely shared by more than one family in Discogs'
 own taxonomy (`Disco` is both an Electronic style and a Funk/Soul
@@ -393,17 +411,29 @@ choices instead, so resolving it happens in the same place as
 everything else instead of requiring a trip to Lexicon's own UI;
 picking one just answers the question a DJ, not the taxonomy, has to
 answer, and the resolved tag then flows through the same
-moves/needs-category bucketing as anything else. Scoped to moving (and,
-with confirmation, creating categories to move into) - never renames a
-label or merges two tags into one; both are bigger, separate decisions
-than "which category does this already-correct tag live in."
+moves/needs-category bucketing as anything else. A tag matching
+*nothing* in the taxonomy - a custom label, or a real subgenre this
+taxonomy just doesn't list - gets the same kind of picker in its own
+"Not in this taxonomy" section, except with all 15 families as
+choices (not just a short candidate list) since nothing narrowed it
+down automatically; grouped by current category to make batches of
+similar tags easy to work through quickly. A manual pick is never
+paired with a rename, unlike an ambiguous one - see
+`reorganize_genres.py`'s own docstring for why a custom label can't
+safely be assumed to be a misspelling of its target family's name.
+Scoped to moving and renaming (and, with confirmation, creating
+categories to move into) - still never merges two tags into one, a
+bigger, separate decision than "which category does this already-
+correct tag live in."
 
-Always a dry run - reports what would move, writes nothing - unless
-`--apply` is passed:
+Always a dry run - reports what would change, writes nothing - unless
+`--apply` is passed (the CLI applies moves and renames together, same
+as the review screen; it has no picker for ambiguous/unmatched tags
+though, so those are always left for review_ui.py):
 
 ```
 python reorganize_genres.py              # report only
-python reorganize_genres.py --apply       # actually move tags
+python reorganize_genres.py --apply       # actually move/rename tags
 ```
 
 ## License

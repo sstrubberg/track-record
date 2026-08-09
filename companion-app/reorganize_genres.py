@@ -23,14 +23,25 @@ risk is generic to Lexicon's own category deletion once tags have
 moved into it, already gated behind apply_moves()'s own confirmation,
 unrelated to who created the category in the first place.
 
-Deliberately scoped to *moving tags between categories* (and, given
-explicit confirmation, creating the categories to move them into) -
-never renames a tag's label and never merges two tags into one. Both
-of those touch more than a tag's own metadata (a rename changes what a
-DJ sees everywhere that tag is applied; a merge means re-pointing
-every track that carries the old tag and then deleting it) - a bigger,
-separate decision than "which category does this already-correct tag
-live in," left for later if it's ever wanted.
+Scoped to *moving tags between categories* and *renaming a tag to a
+taxonomy spelling it's already recognized as* (given explicit
+confirmation for both) - still never merges two tags into one, that
+being the one move here genuinely bigger than "what does this tag's
+own metadata say": it means re-pointing every track that carries the
+old tag and then deleting it, not just updating a label or a
+categoryId. Renaming used to be off the table entirely here too - the
+DJ this was built for reported hand-created tags "all over the place,"
+inconsistently spelled as well as inconsistently categorized, and
+asked for both to get fixed in the same pass. What makes renaming safe
+enough to add: it's only ever proposed for a tag whose name already
+*is* a taxonomy spelling (its own canonical name, or a listed source
+alias, case/hyphen/whitespace differences aside) - never for a tag a
+DJ manually assigned to a family after it matched nothing (see
+manual_assignments below). Renaming "hiphop" to "Hip Hop" is a spelling
+fix; renaming "Deep House Tribute Mashup" to "Electronic" because a DJ
+said that ambiguous label belongs there would erase real information a
+bare family name can't replace - plan_moves() keeps these two cases
+structurally distinct so the second is never proposed by mistake.
 
 "Active" (which families/subgenres this run actually considers) is
 computed fresh from the live library every run, not read from the
@@ -46,18 +57,23 @@ a Funk/Soul style - see genre_taxonomy.build_lookup()'s docstring for
 the full list) is reported separately as ambiguous, never auto-resolved
 - plan_moves()'s resolved_ambiguous param takes a DJ's explicit pick
 instead (review_ui.py's Ambiguous section offers this as clickable
-choices).
+choices). A tag matching nothing in the taxonomy at all is reported as
+unmatched - plan_moves()'s manual_assignments param takes a DJ's
+explicit family pick for these too (review_ui.py's own section), but
+unlike resolved_ambiguous, a manual assignment never implies a rename -
+see above for why.
 
-Always a dry run - reports what WOULD move, changes nothing - unless
+Always a dry run - reports what WOULD change, changes nothing - unless
 --apply is passed, same convention as billboard_tag.py/apply.py's own
---dry-run-by-default write scripts. The move itself: PATCH /tag
-{"id": tag_id, "categoryId": new_id} - a flat body, no "edits" wrapper
-(confirmed directly against a live instance; /tag does NOT take the
-same {"id", "edits": {...}} shape /track does - a 400 "'edits' is not
-allowed" is what a wrapped body gets back).
+--dry-run-by-default write scripts. The change itself: PATCH /tag
+{"id": tag_id, "categoryId": new_id, "label": new_label} (either field
+omitted if that part of this tag isn't changing) - a flat body, no
+"edits" wrapper (confirmed directly against a live instance; /tag does
+NOT take the same {"id", "edits": {...}} shape /track does - a 400
+"'edits' is not allowed" is what a wrapped body gets back).
 
     python reorganize_genres.py              # report only, writes nothing
-    python reorganize_genres.py --apply       # actually move tags
+    python reorganize_genres.py --apply       # actually move/rename tags
 """
 
 from __future__ import annotations
@@ -71,8 +87,41 @@ import lexicon_client
 
 CATEGORY_PREFIX = "Sub-genre - "
 
+# Every non-"Sub-genre - X" category this DJ's real Lexicon library uses
+# for genre/subgenre tags (see module docstring: hand-built before this
+# script existed) - checked alongside CATEGORY_PREFIX to decide whether
+# a tag is even a genre/subgenre tag in the first place. Without this,
+# fetch_tags_with_categories() (every Custom Tag in the library, not
+# just genre ones) fed Mood, Mix, Event, Timing, Era, and Charts tags
+# into the same matching loop - harmless while "unmatched" was a
+# passive report nobody had to act on, but once it grew an interactive
+# per-tag "assign to a family" picker (see plan_moves()'s
+# manual_assignments param), showing a DJ a family picker next to
+# "Halloween" or "Warmup" would be actively wrong, not just noisy.
+# Caught directly: 122 of 258 "unmatched" tags in a real run turned out
+# to be non-genre tags from six categories that were never in scope.
+# Personal-tool territory (a single DJ's own real category names, not a
+# general-purpose config) - add a name here if this DJ ever creates
+# another genre-ish catch-all category outside the "Sub-genre - X"
+# convention.
+_OTHER_GENRE_CATEGORIES = {"Genre", "Subgenre", "Reggae"}
 
-def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None = None) -> dict:
+
+def _is_genre_like_category(category_label: str) -> bool:
+    """A tag with no category at all is still considered in scope -
+    see plan_moves()'s docstring for why an uncategorized tag is worth
+    scanning rather than excluding outright."""
+    return (
+        category_label == "(no category)"
+        or category_label in _OTHER_GENRE_CATEGORIES
+        or category_label.startswith(CATEGORY_PREFIX)
+    )
+
+
+def plan_moves(
+    resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None = None,
+    manual_assignments: dict[str, tuple[str, str, str, str]] | None = None,
+) -> dict:
     """Read-only: fetches the live library's tags/categories and the
     taxonomy, and returns everything a report or an apply pass needs.
     Never writes anything itself.
@@ -89,6 +138,27 @@ def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None =
     couldn't answer. Keyed by normalized name (not a specific Lexicon
     tag id), since the ambiguity is a taxonomy-level fact - "Disco
     belongs to Electronic" applies to that name everywhere it shows up.
+
+    manual_assignments, if given: same shape and same normalized-name
+    key, but for a tag that matched *nothing* in the taxonomy at all -
+    a DJ placing a genuinely custom tag name into a family by hand
+    (review_ui.py's "Not in this taxonomy" section). Also merged into
+    the lookup so it flows through the same bucketing, but tracked
+    separately from resolved_ambiguous: unlike an ambiguous name (which
+    by definition already *is* a real taxonomy spelling, just an
+    overlapping one), a manually-assigned name might be nothing like
+    its target family's canonical spelling - "Deep House Tribute
+    Mashup" placed under Electronic shouldn't get renamed to
+    "Electronic" just because that's the category it's moving into.
+    See module docstring for the full reasoning. rows built from a
+    manual assignment always carry needs_rename=False regardless of
+    how their label compares to the family's canonical name.
+
+    Only ever considers tags whose *current* category is genre-like
+    (see _is_genre_like_category) - a Mood tag named "Dark" or a Mix
+    cue tag named "Blend" was never a candidate for this taxonomy in
+    the first place and has no business in any bucket below, matched
+    or not.
     """
     taxonomy = genre_taxonomy.load_taxonomy()
     lookup, ambiguous_names = genre_taxonomy.build_lookup(taxonomy)
@@ -96,14 +166,21 @@ def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None =
         if norm_name in ambiguous_names:
             lookup[norm_name] = choice
             del ambiguous_names[norm_name]
-    tags, category_labels = lexicon_client.fetch_tags_with_categories()
+    manually_placed_norms: set[str] = set()
+    for norm_name, choice in (manual_assignments or {}).items():
+        if norm_name not in lookup and norm_name not in ambiguous_names:
+            lookup[norm_name] = choice
+            manually_placed_norms.add(norm_name)
+    all_tags, category_labels = lexicon_client.fetch_tags_with_categories()
+    tags = [t for t in all_tags if _is_genre_like_category(category_labels.get(t["categoryId"], "(no category)"))]
     label_to_category_id = {label: cid for cid, label in category_labels.items()}
 
-    moves = []  # matched, target category exists, categoryId needs to change
-    already_correct = []  # matched, already in the right category
+    moves = []  # matched, target category exists, categoryId (and maybe label) needs to change
+    already_correct = []  # matched, already in the right category (may still need a rename - see renames)
+    renames = []  # subset of already_correct where the label alone needs to change
     needs_category = []  # matched, but "Sub-genre - {Family}" doesn't exist yet
     ambiguous = []  # matched a name that's ambiguous across families
-    unmatched = []  # no taxonomy match at all - left alone either way
+    unmatched = []  # no taxonomy match at all, and no manual_assignments entry either
 
     for tag in tags:
         norm = lexicon_client._normalize_label(tag["label"])
@@ -131,13 +208,20 @@ def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None =
             )
             if resolved_match is not None:
                 family_key, family_canonical, subgenre_key, subgenre_canonical = resolved_match
-                already_correct.append({
+                needs_rename = tag["label"] != subgenre_canonical
+                row = {
                     **tag,
                     "current_category": current_category,
                     "family": family_canonical,
                     "subgenre": subgenre_canonical,
                     "target_category": current_category,
-                })
+                    "canonical_label": subgenre_canonical,
+                    "needs_rename": needs_rename,
+                    "manually_placed": False,
+                }
+                already_correct.append(row)
+                if needs_rename:
+                    renames.append(row)
             else:
                 ambiguous.append({**tag, "current_category": current_category, "candidates": candidates})
             continue
@@ -149,12 +233,17 @@ def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None =
 
         family_key, family_canonical, subgenre_key, subgenre_canonical = match
         target_category = f"{CATEGORY_PREFIX}{family_canonical}"
+        manually_placed = norm in manually_placed_norms
+        needs_rename = (not manually_placed) and tag["label"] != subgenre_canonical
         row = {
             **tag,
             "current_category": current_category,
             "family": family_canonical,
             "subgenre": subgenre_canonical,
             "target_category": target_category,
+            "canonical_label": None if manually_placed else subgenre_canonical,
+            "needs_rename": needs_rename,
+            "manually_placed": manually_placed,
         }
 
         target_category_id = label_to_category_id.get(target_category)
@@ -162,12 +251,15 @@ def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None =
             needs_category.append(row)
         elif current_category == target_category:
             already_correct.append(row)
+            if needs_rename:
+                renames.append(row)
         else:
             moves.append({**row, "target_category_id": target_category_id})
 
     return {
         "moves": moves,
         "already_correct": already_correct,
+        "renames": renames,
         "needs_category": needs_category,
         "ambiguous": ambiguous,
         "unmatched": unmatched,
@@ -175,8 +267,9 @@ def plan_moves(resolved_ambiguous: dict[str, tuple[str, str, str, str]] | None =
 
 
 def print_report(plan: dict) -> None:
-    moves, already_correct, needs_category, ambiguous, unmatched = (
-        plan["moves"], plan["already_correct"], plan["needs_category"], plan["ambiguous"], plan["unmatched"]
+    moves, already_correct, renames, needs_category, ambiguous, unmatched = (
+        plan["moves"], plan["already_correct"], plan["renames"], plan["needs_category"],
+        plan["ambiguous"], plan["unmatched"],
     )
 
     by_target: dict[str, list[dict]] = {}
@@ -184,7 +277,8 @@ def print_report(plan: dict) -> None:
         by_target.setdefault(row["target_category"], []).append(row)
 
     print(
-        f"{len(moves)} tag(s) would move, {len(already_correct)} already in the right category, "
+        f"{len(moves)} tag(s) would move, {len(renames)} would rename in place, "
+        f"{len(already_correct) - len(renames)} already correct, "
         f"{len(needs_category)} need a category created first, {len(ambiguous)} ambiguous, "
         f"{len(unmatched)} not in this taxonomy at all\n"
     )
@@ -195,7 +289,8 @@ def print_report(plan: dict) -> None:
             existing_targets = {r["current_category"] for r in rows} - {"(no category)"}
             print(f"\n{target}  ({len(rows)} tag(s))")
             for r in sorted(rows, key=lambda r: r["subgenre"]):
-                print(f"    {r['label']!r} (id={r['id']})  {r['current_category']!r} -> {target!r}")
+                rename_note = f" (rename to {r['canonical_label']!r})" if r["needs_rename"] else ""
+                print(f"    {r['label']!r} (id={r['id']})  {r['current_category']!r} -> {target!r}{rename_note}")
             # A tag leaving a category the DJ named by hand (not this
             # script's own "Sub-genre - X" convention) is exactly the
             # kind of consequence worth calling out explicitly, not
@@ -206,6 +301,11 @@ def print_report(plan: dict) -> None:
                     f"    NOTE: pulls tag(s) out of your own existing categor"
                     f"{'y' if len(hand_named) == 1 else 'ies'} {sorted(hand_named)}"
                 )
+
+    if renames:
+        print("\n=== WOULD RENAME (category is already correct) ===")
+        for r in sorted(renames, key=lambda r: r["label"]):
+            print(f"    {r['label']!r} (id={r['id']}) -> {r['canonical_label']!r}")
 
     if needs_category:
         by_family: dict[str, list[dict]] = {}
@@ -224,7 +324,7 @@ def print_report(plan: dict) -> None:
             print(f"  {row['label']!r} (id={row['id']}, currently in {row['current_category']!r}) could be: {options}")
 
     if unmatched:
-        print(f"\n=== NOT IN THIS TAXONOMY ({len(unmatched)}) - left alone ===")
+        print(f"\n=== NOT IN THIS TAXONOMY ({len(unmatched)}) - left alone (CLI has no picker for these; review_ui.py does) ===")
         by_cat: dict[str, int] = {}
         for row in unmatched:
             by_cat[row["current_category"]] = by_cat.get(row["current_category"], 0) + 1
@@ -232,20 +332,36 @@ def print_report(plan: dict) -> None:
             print(f"    {n:>3}  {cat}")
 
 
-def apply_moves(moves: list[dict]) -> dict:
-    """Actually move each given row's tag to its target_category_id.
-    Returns {"ok": int, "failures": [{"label", "id", "error"}, ...]} -
-    structured rather than printed directly, so review_ui.py's own
-    "Reorganize Genre Tags" section can report the same outcome as a
-    notification instead of stdout only reaching the CLI caller."""
+def apply_moves(rows: list[dict]) -> dict:
+    """Actually apply each given row's change(s): a categoryId move (if
+    the row has a target_category_id - a "moves" row), a label rename
+    (if the row has needs_rename=True and a canonical_label - a
+    "renames" row, or a "moves" row that needs both at once), or both
+    together in a single PATCH. Returns {"ok": int, "failures":
+    [{"label", "id", "error"}, ...]} - structured rather than printed
+    directly, so review_ui.py's own "Reorganize Genre Tags" section can
+    report the same outcome as a notification instead of stdout only
+    reaching the CLI caller.
+
+    Takes rows from either plan_moves() bucket (moves or renames) or a
+    mix of both in one list - the PATCH body is built from whichever
+    fields the row actually carries, so this one function covers "Apply
+    Checked Changes" applying both in a single pass."""
     ok = 0
     failures = []
-    for row in moves:
-        r = requests.patch(
-            f"{lexicon_client.LEXICON}/tag",
-            json={"id": row["id"], "categoryId": row["target_category_id"]},
-            timeout=15,
-        )
+    for row in rows:
+        body: dict = {"id": row["id"]}
+        if row.get("target_category_id") is not None:
+            body["categoryId"] = row["target_category_id"]
+        if row.get("needs_rename") and row.get("canonical_label"):
+            body["label"] = row["canonical_label"]
+        if len(body) == 1:
+            # Nothing to actually change on this row (shouldn't happen -
+            # callers filter to checked rows from moves/renames, both of
+            # which always carry at least one real change - but skip
+            # rather than send a no-op PATCH if it ever does).
+            continue
+        r = requests.patch(f"{lexicon_client.LEXICON}/tag", json=body, timeout=15)
         if r.ok:
             ok += 1
         else:
@@ -279,24 +395,28 @@ def create_categories(labels: list[str]) -> dict:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--apply", action="store_true", help="actually move tags (default: report only, writes nothing)")
+    p.add_argument(
+        "--apply", action="store_true",
+        help="actually move/rename tags (default: report only, writes nothing)",
+    )
     args = p.parse_args()
 
     plan = plan_moves()
     print_report(plan)
 
     if not args.apply:
-        print("\n(dry run - nothing written; pass --apply to actually move these tags)")
+        print("\n(dry run - nothing written; pass --apply to actually move/rename these tags)")
         return
 
-    if not plan["moves"]:
-        print("\nnothing to move")
+    to_apply = plan["moves"] + plan["renames"]
+    if not to_apply:
+        print("\nnothing to move or rename")
         return
 
-    result = apply_moves(plan["moves"])
+    result = apply_moves(to_apply)
     for f in result["failures"]:
         print(f"  FAILED {f['label']!r} (id={f['id']}): {f['error']}")
-    print(f"\n{result['ok']} tag(s) moved, {len(result['failures'])} failed")
+    print(f"\n{result['ok']} tag(s) changed, {len(result['failures'])} failed")
 
 
 if __name__ == "__main__":

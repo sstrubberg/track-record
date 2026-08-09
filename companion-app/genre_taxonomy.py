@@ -32,6 +32,21 @@ def load_taxonomy(path: Path | None = None) -> dict:
     return yaml.safe_load((path or TAXONOMY_FILE).read_text())
 
 
+def list_families(taxonomy: dict) -> list[tuple[str, str]]:
+    """Return every (family_key, family_canonical) in the taxonomy,
+    sorted by canonical name - all 15, not just ones with a matching
+    tag already in the library ("active", per build_lookup()'s own
+    docstring). review_ui.py's manual-assignment picker for a tag that
+    matched nothing needs the full list: a DJ placing a tag by hand is
+    exactly the case where a family might not have any other matching
+    tag yet."""
+    families = taxonomy.get("genre_families") or {}
+    return sorted(
+        ((key, f.get("canonical") or key) for key, f in families.items()),
+        key=lambda kv: kv[1],
+    )
+
+
 def build_lookup(taxonomy: dict) -> tuple[dict[str, tuple[str, str, str, str]], dict[str, list[tuple[str, str]]]]:
     """Return (lookup, ambiguous).
 
