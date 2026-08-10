@@ -7,9 +7,9 @@ is Discogs' own taxonomy either way, not a second one to reconcile),
 but a genuinely different architecture: an EfficientNet classification
 head on top of discogs-effnet's embeddings, vs. discogs-maest's
 end-to-end transformer. Same taxonomy means no new alias-mapping
-anywhere (genre_taxonomy.yaml, scoring.py); different architecture
-means this is real second-opinion corroboration for
-auto_include.min_agreeing_sources, not the same model asked twice.
+anywhere in scoring.py; different architecture means this is real
+second-opinion corroboration for auto_include.min_agreeing_sources,
+not the same model asked twice.
 
 Shares its embedding extractor with audio_model_mood.py rather than
 downloading a second copy - see audio_model_mood.load_embedding_model()

@@ -71,64 +71,13 @@ def fetch_categories() -> list[dict]:
     ]
 
 
-def fetch_tags_with_categories() -> tuple[list[dict], dict[int, str]]:
-    """Return (tags, category_labels) - tags as every Custom Tag with its
-    current categoryId ([{"id", "categoryId", "label"}, ...], original
-    casing), category_labels as {id: label} for the categories those
-    tags currently belong to. Lexicon's categories are flat (no
-    nesting/parent field, confirmed directly against a live instance) -
-    reorganize_genres.py is the one caller that needs a tag's *current*
-    category alongside its label, to compute whether it needs to move;
-    fetch_categories() alone (just the category list) and
-    fetch_tag_index() alone (just id<->label) don't carry that link."""
-    payload = lexicon_get("/tags")
-    tags = [
-        {"id": t["id"], "categoryId": t.get("categoryId"), "label": t.get("label") or t.get("name") or ""}
-        for t in payload.get("tags", [])
-    ]
-    category_labels = {c["id"]: c["label"] for c in payload.get("categories", []) if c.get("label")}
-    return tags, category_labels
-
-
-def create_category(label: str) -> int:
-    """POST /tag-category - creates a new, empty Custom Tag category and
-    returns its id. Flat body ({"label": ...}), not wrapped in "edits" -
-    confirmed directly against a live instance, same shape create_tag()
-    already uses for /tag. Response is flat too: {"id", "label",
-    "position", "tags": []} - not wrapped in a "data" key.
-
-    Purely additive and reversible on its own: an empty category has no
-    tags in it, so deleting one right back out (DELETE /tag-category,
-    not implemented here - this project doesn't delete anything on a
-    DJ's behalf) loses nothing. That stops being true once tags actually
-    get moved into it - Lexicon's own delete warns "This will delete
-    all Custom Tags in this category" - but that's a property of
-    Lexicon's category deletion in general, not something this function
-    introduces; the move step itself is a separate, already-confirmed
-    action (see reorganize_genres.py's apply_moves()).
-
-    Callers are responsible for not creating a category that already
-    exists by this exact label - reorganize_genres.py's own
-    create_categories() only ever calls this for families plan_moves()
-    has already confirmed have no matching category yet.
-    """
-    r = requests.post(f"{LEXICON}/tag-category", json={"label": label}, timeout=30)
-    r.raise_for_status()
-    return r.json()["id"]
-
-
 def create_tag(label: str, category_id: int) -> int:
     """POST /tag - creates a new Custom Tag in an existing category and
-    returns its id. Never call this to create a category - that's
-    create_category() above, /tag-category, a separate endpoint. The
-    Genre/Subgenre and Mood/Theme review flow (apply.py/genre_apply,
-    mood_apply) never creates a category as a side effect of approving
-    a "propose a new tag" row - it only ever files into a category the
-    DJ picked (or new_tag_category resolved) from what already exists.
-    create_category() is reserved for reorganize_genres.py's own
-    explicit, previewed, DJ-confirmed "Create Categories" action - a
-    different, deliberate action, not something this function or the
-    main review screen does on anyone's behalf.
+    returns its id. The Genre/Subgenre and Mood/Theme review flow
+    (apply.py/genre_apply, mood_apply) never creates a category as a
+    side effect of approving a "propose a new tag" row - it only ever
+    files into a category the DJ picked (or new_tag_category resolved)
+    from what already exists.
 
     The response is a flat object - {"id": ..., "categoryId": ...,
     "label": ..., "position": ...} - not wrapped in a "data" key like

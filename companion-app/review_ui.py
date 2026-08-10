@@ -29,23 +29,6 @@ action's own apply_decisions() - genre_apply for genre rows,
 mood_apply for mood rows, potentially both in one click - then
 reporting both outcomes in one combined notification.
 
-Two views, one connection: everything above (Generate/Review/Apply)
-lives in tagging_view; Reorganize Genre Tags (see reorganize_genres.py)
-lives in its own reorganize_view - genuinely separate screens sharing
-one session's state, not one continuous scrolling page with Reorganize
-tacked on as a section at the bottom. A persistent nav row switches
-between them ("Reorganize Genre Tags →" / "← Back to Tagging"),
-building both up front and toggling .visible rather than navigating to
-a different URL or rebuilding either one - switching back to Tagging
-always shows exactly what was left (same checked rows, same expanded
-tracks), and Reorganize doesn't re-fetch from Lexicon just because you
-looked away and back. This replaced an earlier design where Reorganize
-was a collapsed accordion that only appeared after a genre Apply Tags
-- a DJ found that gave no real sense of "what to do next" and wanted
-Tagging and Reorganize to feel like "two separate but connected
-workflows" instead, reachable independent of whether anything was
-just applied this session.
-
 Layout:
 - Scan-mode picker (whole library / most recently added / Incoming,
   optionally capped by count) and the Genre/Subgenre source checkboxes
@@ -131,12 +114,10 @@ from nicegui import run, ui
 
 import apply as genre_apply
 import config_editor
-import genre_taxonomy
 import lexicon_client
 import mood_apply
 import mood_plan
 import plan as genre_plan_module
-import reorganize_genres
 import scan_progress
 import scoring
 
@@ -279,53 +260,6 @@ def build_ui() -> None:
         # scan actually runs, since that's the one time the count or
         # the cursor could plausibly have changed.
         "library_snapshot": None,
-        # Reorganize Genre Tags section - a separate, later step (see
-        # reorganize_genres.py's own docstring), unrelated to the
-        # genre_plan/mood_plan review above. reorg_plan holds the last
-        # computed plan_moves() result (None until "Check Genre
-        # Organization" has been clicked at least once this session);
-        # reorg_checked, keyed by tag id, is which of the proposed
-        # moves are checked - defaults to all-checked (these are
-        # deterministic taxonomy matches, not confidence-scored
-        # guesses, so there's no "needs review" bar to clear the way
-        # genre_plan/mood_plan rows have).
-        "reorg_plan": None,
-        # Checked-state for BOTH the "would move" and "would rename"
-        # buckets, keyed by tag id - a tag id is unique across both, so
-        # one dict and one "Apply Checked Changes" button covers a tag
-        # that needs only a move, only a rename, or both at once.
-        # Defaults to all-checked (these are deterministic taxonomy
-        # matches, not confidence-scored guesses, so there's no "needs
-        # review" bar to clear the way genre_plan/mood_plan rows have).
-        "reorg_checked": {},
-        # A DJ's explicit picks for ambiguous tags (see
-        # reorganize_genres.plan_moves()'s resolved_ambiguous param) -
-        # keyed by normalized tag name, kept across re-checks within
-        # the session so resolving "Disco" once doesn't need
-        # re-resolving every time Check Genre Organization reruns.
-        "reorg_ambiguous_resolved": {},
-        # Same idea, same key shape, for a tag that matched *nothing*
-        # in the taxonomy (plan_moves()'s manual_assignments param) -
-        # kept as a separate dict from reorg_ambiguous_resolved even
-        # though both merge into the same lookup, because the two mean
-        # different things: an ambiguous pick is choosing among real
-        # taxonomy candidates, a manual pick is a DJ saying "this
-        # custom label belongs under this family" - plan_moves() uses
-        # that distinction to decide whether a rename can ever be
-        # proposed alongside it (never, for a manual pick - see that
-        # module's own docstring).
-        "reorg_manual_assignments": {},
-        # Multi-select state for the "Not in this taxonomy" section's
-        # "Assign Checked" control, keyed by tag id - deliberately a
-        # separate dict from reorg_checked (that one's "checked" means
-        # "include in Apply Checked Changes," defaulting True; this
-        # one's "checked" means "part of the batch I'm about to assign
-        # a family to," defaulting False - nothing should be silently
-        # included in a bulk family assignment). A tag's own entry here
-        # is popped once it's actually assigned (see
-        # assign_checked_unmatched below) and pruned on every re-plan
-        # like reorg_checked is, so a stale id never lingers.
-        "reorg_unmatched_checked": {},
     }
     progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
@@ -351,13 +285,12 @@ def build_ui() -> None:
         ui.label("Track Record").classes("text-xl font-bold")
         with ui.row().classes("items-center gap-0"):
             # Settings is per-DJ config tuning (a handful of numbers,
-            # touched rarely), not a workflow the way Tagging/Reorganize
-            # are - a gear-icon dialog next to this same header fits it
-            # better than a third full-screen view with its own back
-            # button. Click handler wired up further down (open_settings_dialog
-            # is defined after review_section/reorg_section exist, same
-            # forward-reference-via-already-positioned-button trick as
-            # the Tagging/Reorganize nav row above).
+            # touched rarely), not the main workflow - a gear-icon
+            # dialog next to this same header fits it better than a
+            # separate full-screen view with its own back button.
+            # Click handler wired up further down (open_settings_dialog
+            # is defined after review_section exists, so the button is
+            # created here for header position but wired up later).
             settings_button = ui.button(icon="settings").props("flat round dense")
             with ui.button(icon="notifications").props("flat round dense"):
                 notif_badge = ui.badge("0", color="red").props("floating")
@@ -388,1094 +321,570 @@ def build_ui() -> None:
 
     render_notifications()
 
-    # Two genuinely separate views sharing this one connection/state,
-    # not one continuous scrolling page with Reorganize tacked on as an
-    # accordion at the bottom - a DJ reported wanting Tagging and
-    # Reorganize to feel like "two separate but connected workflows,"
-    # with a way to navigate to Reorganize and a real way back, rather
-    # than a section that just appears below Apply Tags. Both views'
-    # content is built once, right here, at startup - toggling between
-    # them is purely a pair of .visible flips, not a rebuild, so
-    # switching back to Tagging always shows exactly what you left
-    # (same scroll position within the view, same checked rows, same
-    # expanded tracks) and switching to Reorganize doesn't re-fetch
-    # unless you ask it to.
-    # Nav row created (and thus DOM-positioned) before the two view
-    # containers below it, deliberately - a container's own position in
-    # the tree is fixed at creation time, not wherever its content
-    # later gets filled in via `with container:`, so creating this
-    # after tagging_view/reorganize_view would have put it visually
-    # below all of tagging_view's content instead of above both views
-    # (caught by testing this directly - it rendered at the very bottom
-    # of the page instead of as a header). Buttons get their click
-    # handler and visibility binding wired up below, once
-    # tagging_view/reorganize_view actually exist to bind to.
-    with ui.row().classes("items-center gap-2 mb-2"):
-        back_to_tagging_button = ui.button("← Back to Tagging").props("flat dense")
-        to_reorganize_button = ui.button("Reorganize Genre Tags →").props("outline dense")
+    scan_mode_hints = {
+        "all": "Leave count blank to scan the whole library.",
+        "recent": f"Scans the N most recently added tracks (blank = {genre_plan_module.DEFAULT_RECENT_COUNT}).",
+        "incoming": "Scans everything in your Incoming bin; set a count to cap it.",
+    }
 
-    tagging_view = ui.column().classes("w-full")
-    reorganize_view = ui.column().classes("w-full")
-    reorganize_view.visible = False
+    with ui.row().classes("items-center gap-2"):
+        scan_mode_select = ui.select(
+            {"all": "Whole library", "recent": "Most recently added", "incoming": "Incoming"},
+            value="all",
+            label="scan",
+        ).classes("w-48")
+        limit_input = ui.number(label="count (optional)", min=1).classes("w-40")
+        generate_button = ui.button("Generate Plan")
+        stop_button = ui.button("Stop", icon="stop", color="negative")
+        stop_button.visible = False
 
-    def show_tagging_view() -> None:
-        tagging_view.visible = True
-        reorganize_view.visible = False
+    scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
 
-    async def show_reorganize_view() -> None:
-        tagging_view.visible = False
-        reorganize_view.visible = True
-        # Auto-check the first time you ever land here, so arriving via
-        # the nav button always shows real content instead of an empty
-        # "click Check Genre Organization" prompt - refresh_reorg_plan
-        # is defined further down (inside reorganize_view's own build
-        # below) but already exists as a name in this same enclosing
-        # scope by the time this actually runs (a button click, well
-        # after build_ui() has finished executing once at startup).
-        if state["reorg_plan"] is None:
-            await refresh_reorg_plan()
+    def on_scan_mode_change(e) -> None:
+        scan_mode_hint.set_text(scan_mode_hints[e.value])
+        scan_progress_caption.refresh()
 
-    back_to_tagging_button.on_click(show_tagging_view)
-    back_to_tagging_button.bind_visibility_from(reorganize_view, "visible")
-    to_reorganize_button.on_click(show_reorganize_view)
-    to_reorganize_button.bind_visibility_from(tagging_view, "visible")
+    scan_mode_select.on_value_change(on_scan_mode_change)
 
-    with tagging_view:
-        scan_mode_hints = {
-            "all": "Leave count blank to scan the whole library.",
-            "recent": f"Scans the N most recently added tracks (blank = {genre_plan_module.DEFAULT_RECENT_COUNT}).",
-            "incoming": "Scans everything in your Incoming bin; set a count to cap it.",
+    with ui.row().classes("items-center gap-4"):
+        ui.label("Tag with:").classes("text-sm text-gray-500")
+        genre_enabled_checkbox = ui.checkbox("Genre / Subgenre", value=True).props("dense")
+        mood_enabled_checkbox = ui.checkbox("Mood / Theme", value=True).props("dense")
+        genre_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
+        mood_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
+
+    # Which Genre/Subgenre fetch sources actually run - unchecking one
+    # skips it entirely for the run, not just down-weights it (that's
+    # still source_weights.yaml's job). Useful on its own: the two audio
+    # models are by far the slowest part of a run (local inference per
+    # track), so a metadata-only pass with both off is a much faster way
+    # to sanity-check Discogs coverage. Only meaningful (and only shown)
+    # when Genre/Subgenre itself is checked above - Mood/Theme has just
+    # the one source, nothing yet to toggle. MusicBrainz was a source
+    # here through 2026-08-07 - dropped (see plan.py) after consistently
+    # disappointing suggestions; audio_model_genre_effnet took its slot,
+    # a second, architecturally-independent audio model rather than a
+    # second web lookup.
+    SOURCE_LABELS = {
+        "discogs": "Discogs",
+        "audio_model": "Audio Model (discogs-maest)",
+        "audio_model_genre_effnet": "Audio Model (genre_discogs400)",
+    }
+    with ui.row().classes("items-center gap-4") as source_row:
+        ui.label("Genre/Subgenre sources:").classes("text-sm text-gray-500")
+        source_checkboxes = {
+            name: ui.checkbox(label, value=True).props("dense")
+            for name, label in SOURCE_LABELS.items()
         }
+    source_row.bind_visibility_from(genre_enabled_checkbox, "value")
 
-        with ui.row().classes("items-center gap-2"):
-            scan_mode_select = ui.select(
-                {"all": "Whole library", "recent": "Most recently added", "incoming": "Incoming"},
-                value="all",
-                label="scan",
-            ).classes("w-48")
-            limit_input = ui.number(label="count (optional)", min=1).classes("w-40")
-            generate_button = ui.button("Generate Plan")
-            stop_button = ui.button("Stop", icon="stop", color="negative")
-            stop_button.visible = False
+    def get_library_snapshot() -> list[dict]:
+        if state["library_snapshot"] is None:
+            state["library_snapshot"] = lexicon_client.fetch_library()
+        return state["library_snapshot"]
 
-        scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
-
-        def on_scan_mode_change(e) -> None:
-            scan_mode_hint.set_text(scan_mode_hints[e.value])
-            scan_progress_caption.refresh()
-
-        scan_mode_select.on_value_change(on_scan_mode_change)
-
-        with ui.row().classes("items-center gap-4"):
-            ui.label("Tag with:").classes("text-sm text-gray-500")
-            genre_enabled_checkbox = ui.checkbox("Genre / Subgenre", value=True).props("dense")
-            mood_enabled_checkbox = ui.checkbox("Mood / Theme", value=True).props("dense")
-            genre_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
-            mood_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
-
-        # Which Genre/Subgenre fetch sources actually run - unchecking one
-        # skips it entirely for the run, not just down-weights it (that's
-        # still source_weights.yaml's job). Useful on its own: the two audio
-        # models are by far the slowest part of a run (local inference per
-        # track), so a metadata-only pass with both off is a much faster way
-        # to sanity-check Discogs coverage. Only meaningful (and only shown)
-        # when Genre/Subgenre itself is checked above - Mood/Theme has just
-        # the one source, nothing yet to toggle. MusicBrainz was a source
-        # here through 2026-08-07 - dropped (see plan.py) after consistently
-        # disappointing suggestions; audio_model_genre_effnet took its slot,
-        # a second, architecturally-independent audio model rather than a
-        # second web lookup.
-        SOURCE_LABELS = {
-            "discogs": "Discogs",
-            "audio_model": "Audio Model (discogs-maest)",
-            "audio_model_genre_effnet": "Audio Model (genre_discogs400)",
-        }
-        with ui.row().classes("items-center gap-4") as source_row:
-            ui.label("Genre/Subgenre sources:").classes("text-sm text-gray-500")
-            source_checkboxes = {
-                name: ui.checkbox(label, value=True).props("dense")
-                for name, label in SOURCE_LABELS.items()
-            }
-        source_row.bind_visibility_from(genre_enabled_checkbox, "value")
-
-        def get_library_snapshot() -> list[dict]:
-            if state["library_snapshot"] is None:
-                state["library_snapshot"] = lexicon_client.fetch_library()
-            return state["library_snapshot"]
-
-        async def reset_scan_progress(action: str, label: str) -> None:
-            with ui.dialog() as confirm_dialog, ui.card():
-                ui.label(
-                    f"Reset scan progress for {label}? The next whole-library scan "
-                    f"will start over from the beginning instead of continuing where "
-                    f"it left off. Tags already applied are untouched - nothing gets "
-                    f"un-tagged."
-                )
-                with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                    ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
-                    ui.button(
-                        "Reset", color="negative",
-                        on_click=lambda: confirm_dialog.submit("continue"),
-                    )
-            if await confirm_dialog != "continue":
-                return
-            scan_progress.reset(action)
-            notify(f"Scan progress reset for {label} - the next whole-library scan starts from the beginning")
-            scan_progress_caption.refresh()
-
-        # Only meaningful for "Whole library" - "Most recently added" is
-        # already a moving window and "Incoming" self-narrows as tracks
-        # leave that bin, so neither has an analogous saved position (see
-        # scan_progress.py). Shown per enabled action, since Genre/Subgenre
-        # and Mood/Theme scans track their own separate positions and a DJ
-        # might only be running one of them right now.
-        @ui.refreshable
-        def scan_progress_caption() -> None:
-            if scan_mode_select.value != "all":
-                return
-            actions = [
-                ("genre", "Genre/Subgenre", genre_enabled_checkbox.value),
-                ("mood", "Mood/Theme", mood_enabled_checkbox.value),
-            ]
-            if not any(enabled for _, _, enabled in actions):
-                return
-            snapshot = get_library_snapshot()
-            total = len(snapshot)
-            for action, label, enabled in actions:
-                if not enabled:
-                    continue
-                cursor = scan_progress.get_cursor(action)
-                scanned = sum(1 for t in snapshot if t["id"] <= cursor) if cursor is not None else 0
-                caught_up = " (fully caught up)" if total and scanned >= total else ""
-                with ui.row().classes("items-center gap-2"):
-                    ui.label(f"{label}: {scanned:,} of {total:,} tracks scanned{caught_up}").classes(
-                        "text-xs text-gray-500"
-                    )
-                    if cursor is not None:
-                        ui.button(
-                            "Reset", on_click=lambda a=action, l=label: reset_scan_progress(a, l)
-                        ).props("flat dense size=sm color=grey")
-
-        scan_progress_caption()
-
-        progress_label = ui.label("").classes("text-gray-500")
-        progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
-        progress_bar.visible = False
-        preview_container = ui.column().classes("gap-0")
-
-        _KIND_CLASSES = {
-            "AUTO": "text-green-600",
-            "REVIEW": "text-gray-400",
-            "REVIEW (low confidence)": "text-orange-400",
-            "CREATE": "text-blue-400",
-        }
-
-        def render_preview(result: dict) -> None:
-            preview_container.clear()
-            with preview_container:
-                for row in result["auto"]:
-                    kind = "AUTO"
-                    ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
-                for row in result["review"]:
-                    kind = "REVIEW (low confidence)" if row.get("low_confidence") else "REVIEW"
-                    ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
-                for row in result["create"]:
-                    kind = "CREATE"
-                    ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%}) - new tag").classes(f"text-sm {_KIND_CLASSES[kind]}")
-
-        def update_progress() -> None:
-            if not progress["total"]:
-                return
-            suffix = "  (stopping after this track...)" if progress["stopping"] else ""
-            progress_label.text = (
-                f"[{progress['phase']} {progress['current']}/{progress['total']}] "
-                f"{progress['artist']} — {progress['title']}{suffix}"
+    async def reset_scan_progress(action: str, label: str) -> None:
+        with ui.dialog() as confirm_dialog, ui.card():
+            ui.label(
+                f"Reset scan progress for {label}? The next whole-library scan "
+                f"will start over from the beginning instead of continuing where "
+                f"it left off. Tags already applied are untouched - nothing gets "
+                f"un-tagged."
             )
-            progress_bar.value = progress["current"] / progress["total"]
-            # Only redraw the preview when a new track's result has actually
-            # arrived - not every timer tick - so it reads as "this track's
-            # findings", replaced by the next track's, not a flicker.
-            if progress["result"] is not None and progress["rendered"] != progress["current"]:
-                progress["rendered"] = progress["current"]
-                render_preview(progress["result"])
+            with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
+                ui.button(
+                    "Reset", color="negative",
+                    on_click=lambda: confirm_dialog.submit("continue"),
+                )
+        if await confirm_dialog != "continue":
+            return
+        scan_progress.reset(action)
+        notify(f"Scan progress reset for {label} - the next whole-library scan starts from the beginning")
+        scan_progress_caption.refresh()
 
-        ui.timer(0.3, update_progress)
+    # Only meaningful for "Whole library" - "Most recently added" is
+    # already a moving window and "Incoming" self-narrows as tracks
+    # leave that bin, so neither has an analogous saved position (see
+    # scan_progress.py). Shown per enabled action, since Genre/Subgenre
+    # and Mood/Theme scans track their own separate positions and a DJ
+    # might only be running one of them right now.
+    @ui.refreshable
+    def scan_progress_caption() -> None:
+        if scan_mode_select.value != "all":
+            return
+        actions = [
+            ("genre", "Genre/Subgenre", genre_enabled_checkbox.value),
+            ("mood", "Mood/Theme", mood_enabled_checkbox.value),
+        ]
+        if not any(enabled for _, _, enabled in actions):
+            return
+        snapshot = get_library_snapshot()
+        total = len(snapshot)
+        for action, label, enabled in actions:
+            if not enabled:
+                continue
+            cursor = scan_progress.get_cursor(action)
+            scanned = sum(1 for t in snapshot if t["id"] <= cursor) if cursor is not None else 0
+            caught_up = " (fully caught up)" if total and scanned >= total else ""
+            with ui.row().classes("items-center gap-2"):
+                ui.label(f"{label}: {scanned:,} of {total:,} tracks scanned{caught_up}").classes(
+                    "text-xs text-gray-500"
+                )
+                if cursor is not None:
+                    ui.button(
+                        "Reset", on_click=lambda a=action, l=label: reset_scan_progress(a, l)
+                    ).props("flat dense size=sm color=grey")
 
-        @ui.refreshable
-        def review_section() -> None:
-            genre_plan = state["genre_plan"]
-            mood_plan_ = state["mood_plan"]
-            if not genre_plan and not mood_plan_:
-                ui.label("No plan yet - click Generate Plan above.").classes("text-gray-500")
-                return
+    scan_progress_caption()
 
-            categories = lexicon_client.fetch_categories()
-            category_options = {c["id"]: c["label"] for c in categories}
-            min_conf_by_kind = {
-                "genre": genre_weights.get("auto_include", {}).get("min_confidence", 1.0),
-                "mood": mood_weights.get("auto_include", {}).get("min_confidence", 1.0),
+    progress_label = ui.label("").classes("text-gray-500")
+    progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-64")
+    progress_bar.visible = False
+    preview_container = ui.column().classes("gap-0")
+
+    _KIND_CLASSES = {
+        "AUTO": "text-green-600",
+        "REVIEW": "text-gray-400",
+        "REVIEW (low confidence)": "text-orange-400",
+        "CREATE": "text-blue-400",
+    }
+
+    def render_preview(result: dict) -> None:
+        preview_container.clear()
+        with preview_container:
+            for row in result["auto"]:
+                kind = "AUTO"
+                ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
+            for row in result["review"]:
+                kind = "REVIEW (low confidence)" if row.get("low_confidence") else "REVIEW"
+                ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
+            for row in result["create"]:
+                kind = "CREATE"
+                ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%}) - new tag").classes(f"text-sm {_KIND_CLASSES[kind]}")
+
+    def update_progress() -> None:
+        if not progress["total"]:
+            return
+        suffix = "  (stopping after this track...)" if progress["stopping"] else ""
+        progress_label.text = (
+            f"[{progress['phase']} {progress['current']}/{progress['total']}] "
+            f"{progress['artist']} — {progress['title']}{suffix}"
+        )
+        progress_bar.value = progress["current"] / progress["total"]
+        # Only redraw the preview when a new track's result has actually
+        # arrived - not every timer tick - so it reads as "this track's
+        # findings", replaced by the next track's, not a flicker.
+        if progress["result"] is not None and progress["rendered"] != progress["current"]:
+            progress["rendered"] = progress["current"]
+            render_preview(progress["result"])
+
+    ui.timer(0.3, update_progress)
+
+    @ui.refreshable
+    def review_section() -> None:
+        genre_plan = state["genre_plan"]
+        mood_plan_ = state["mood_plan"]
+        if not genre_plan and not mood_plan_:
+            ui.label("No plan yet - click Generate Plan above.").classes("text-gray-500")
+            return
+
+        categories = lexicon_client.fetch_categories()
+        category_options = {c["id"]: c["label"] for c in categories}
+        min_conf_by_kind = {
+            "genre": genre_weights.get("auto_include", {}).get("min_confidence", 1.0),
+            "mood": mood_weights.get("auto_include", {}).get("min_confidence", 1.0),
+        }
+
+        tracks = group_by_track(genre_plan, mood_plan_)
+
+        # Ensure every row currently in the plan has a checked-default
+        # (pre-checked for auto rows, unchecked otherwise) regardless of
+        # which page it'll land on - a row on page 4 that the DJ never
+        # scrolls to still needs to count as pre-checked for Save
+        # Decisions, the same as it would if pagination didn't exist.
+        # setdefault only writes a value the first time a key is seen,
+        # so an already-answered checkbox (checked, unchecked, or a
+        # category picked) is never reset back to its default just
+        # because the page holding it got rebuilt. Also prunes both
+        # dicts down to keys that still exist - a full regenerate or a
+        # completed save both remove rows, and their leftover checked/
+        # category state should go with them rather than linger forever.
+        valid_keys = set()
+        for track_id, info in tracks.items():
+            for row in info["rows"]:
+                key = (track_id, row["kind"], row["tag"])
+                valid_keys.add(key)
+                state["checked"].setdefault(key, row.get("is_auto", False))
+        for d in (state["checked"], state["category_choice"]):
+            for key in list(d):
+                if key not in valid_keys:
+                    del d[key]
+        state["expanded_tracks"] &= tracks.keys()
+
+        # DJ edits of the same song (e.g. "Promiscuous (Intro Clean)" /
+        # "Promiscuous (Quick Hit Clean)") - see find_sibling_edits()'s
+        # own docstring. Genre/Subgenre only, never Mood/Theme: real
+        # testing on two edits of the same song found genre stayed
+        # essentially consistent between them, while mood-adjacent tags
+        # (a spoken intro reading as "Ballad"/"Vocal") genuinely
+        # differed - mood is edit-sensitive in a way genre isn't.
+        #
+        # Deliberately NOT a live binding - an earlier version of this
+        # auto-mirrored every check/uncheck bidirectionally between
+        # siblings, which turned out to have two real problems in
+        # practice: no visibility into which edits a track was actually
+        # linked to beyond a bare count, and no way to let one edit
+        # genuinely differ from its sibling without the live link
+        # fighting you. render_rows() below instead shows each
+        # sibling's real title and offers a one-time "Copy checked
+        # genre tags to..." action - copies whatever's checked right
+        # now onto the sibling(s) once, same "only where the sibling
+        # already proposed it as a candidate" rule as before, but
+        # nothing stays linked afterward. Unchecking something later
+        # never cascades anywhere.
+        siblings_by_track = find_sibling_edits(tracks)
+
+        def toggle_all(e) -> None:
+            for track_id, info in tracks.items():
+                for row in info["rows"]:
+                    state["checked"][(track_id, row["kind"], row["tag"])] = e.value
+            review_section.refresh()
+
+        # value=False used to be a hard-coded literal here, not derived
+        # from state - harmless before toggle_all() called refresh()
+        # unconditionally (nothing ever rebuilt this checkbox out from
+        # under itself), but once it did, every click rebuilt this exact
+        # checkbox back to its literal False, snapping it right back to
+        # unchecked even though the click had, in fact, just checked
+        # every row (confirmed directly: the underlying state["checked"]
+        # writes always worked correctly - only this checkbox's own
+        # displayed value was wrong). Computed fresh each render instead.
+        all_checked = bool(valid_keys) and all(state["checked"].get(key) for key in valid_keys)
+        with ui.row().classes("items-center gap-2"):
+            # Bare "Select all" didn't say what it was all of - genre,
+            # mood, one track, every track, the visible page? It's
+            # actually every genre and mood candidate row across the
+            # whole plan (see toggle_all() above), independent of
+            # pagination - matching that in the label instead of
+            # leaving it to be inferred.
+            ui.checkbox("Select all tags (every track)", value=all_checked, on_change=toggle_all)
+            ui.label(f"{len(tracks)} track(s) with proposed tags - high-confidence ones are pre-checked, review the rest").classes(
+                "text-gray-500"
+            )
+
+        # Pagination - at real-library scale (thousands of tracks) every
+        # track's expansion showing up at once, even collapsed, was
+        # measured at 500K+ DOM nodes and 20+ seconds just to build the
+        # element tree for 2,000 synthetic tracks before a page-size
+        # limit existed. Slicing to one page's worth of track shells is
+        # the actual fix for that; row content is also deferred until a
+        # track is opened (see build_track_content below) so even a full
+        # page of collapsed tracks stays cheap.
+        sorted_tracks = sorted(tracks.items(), key=lambda kv: ((kv[1]["artist"] or ""), kv[1]["title"] or ""))
+        page_size = state["page_size"]
+        total_pages = max(1, -(-len(sorted_tracks) // page_size))  # ceil div
+        state["page"] = max(1, min(state["page"], total_pages))
+        start = (state["page"] - 1) * page_size
+        page_tracks = sorted_tracks[start:start + page_size]
+
+        with ui.row().classes("items-center gap-3"):
+            def on_page_size_change(e) -> None:
+                state["page_size"] = e.value
+                state["page"] = 1
+                review_section.refresh()
+
+            ui.select(PAGE_SIZE_OPTIONS, value=page_size, label="tracks per page").props("dense").classes(
+                "w-32"
+            ).on_value_change(on_page_size_change)
+
+            if total_pages > 1:
+                def on_page_change(e) -> None:
+                    state["page"] = e.value
+                    review_section.refresh()
+
+                ui.pagination(1, total_pages, value=state["page"], direction_links=True, on_change=on_page_change)
+                ui.label(f"tracks {start + 1}-{min(start + page_size, len(sorted_tracks))} of {len(sorted_tracks)}").classes(
+                    "text-xs text-gray-500"
+                )
+
+        def render_rows(rows: list[dict], select_all_label: str) -> None:
+            """One kind's sub-group within a track's expansion - its
+            own heading, its own "select all", its own confidence-
+            sorted rows. Shared by both kinds; only the row data and
+            label differ."""
+            rows = sorted(rows, key=lambda r: -r["confidence"])
+            kind = rows[0]["kind"]
+            track_id = rows[0]["track_id"]
+
+            def toggle_sub(e, rows=rows, kind=kind) -> None:
+                for row in rows:
+                    state["checked"][(row["track_id"], kind, row["tag"])] = e.value
+                review_section.refresh()
+
+            ui.label(KIND_LABELS[kind]).classes("text-xs font-bold text-gray-500 uppercase mt-2")
+            with ui.row().classes("items-center gap-2 px-2 py-1 mb-1 bg-gray-50 dark:bg-gray-800 rounded"):
+                ui.checkbox(select_all_label, value=False, on_change=toggle_sub).props("dense")
+
+                sibling_ids = siblings_by_track.get(track_id, ()) if kind == "genre" else ()
+                if sibling_ids:
+                    sibling_titles = [tracks[sid]["title"] for sid in sibling_ids]
+                    btn_label = (
+                        f"Copy checked genre tags to \"{sibling_titles[0]}\""
+                        if len(sibling_ids) == 1
+                        else f"Copy checked genre tags to {len(sibling_ids)} sibling edits"
+                    )
+
+                    def copy_to_siblings(sibling_ids=sibling_ids, track_id=track_id) -> None:
+                        checked_tags = [
+                            row["tag"] for row in rows
+                            if state["checked"].get((track_id, "genre", row["tag"]))
+                        ]
+                        if not checked_tags:
+                            notify("No genre tags checked on this track yet - check some, then copy", type="warning")
+                            return
+                        copied = 0
+                        for sibling_id in sibling_ids:
+                            for tag in checked_tags:
+                                sibling_key = (sibling_id, "genre", tag)
+                                # Only where the sibling's own audio/catalog
+                                # lookup already proposed this exact tag as a
+                                # candidate - never invents one it didn't
+                                # earn. A one-time copy, not a live link:
+                                # nothing here keeps watching for future
+                                # changes on either track.
+                                if sibling_key in valid_keys and not state["checked"].get(sibling_key):
+                                    state["checked"][sibling_key] = True
+                                    copied += 1
+                        if copied:
+                            notify(
+                                f"Copied {len(checked_tags)} checked tag(s) to {len(sibling_ids)} "
+                                f"sibling edit(s) - {copied} new check(s)",
+                                type="positive",
+                            )
+                        else:
+                            notify(
+                                "Nothing new to copy - sibling edit(s) either already have these "
+                                "tags checked or never proposed them as candidates",
+                                type="warning",
+                            )
+                        review_section.refresh()
+
+                    copy_btn = ui.button(btn_label, on_click=copy_to_siblings).props("outline dense size=sm")
+                    if len(sibling_ids) > 1:
+                        copy_btn.tooltip(", ".join(sibling_titles))
+
+            for row in rows:
+                is_auto = row.get("is_auto", False)
+                key = (row["track_id"], kind, row["tag"])
+                with ui.element("div").style(ROW_GRID).classes(
+                    "w-full px-2 py-2 border-b border-gray-100 dark:border-gray-800 "
+                    "hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                    + (" bg-green-50 dark:bg-green-950/30" if is_auto else "")
+                ):
+                    # Pre-checked, not just flagged - a row that already
+                    # cleared its action's auto-include bar shouldn't
+                    # need an extra click on top of the one Save
+                    # Decisions click everything else needs. Still just
+                    # a checkbox: uncheck it like any other if you
+                    # disagree with this one. Reads its initial value
+                    # from state["checked"] (already defaulted above)
+                    # and writes back on every change, rather than being
+                    # the source of truth itself - the checkbox object
+                    # doesn't survive a page turn, the dict does.
+                    cb = ui.checkbox(value=state["checked"][key]).props("dense")
+                    cb.on_value_change(lambda e, key=key: state["checked"].__setitem__(key, e.value))
+
+                    label = row["tag"] + ("  · new" if row["is_new"] else "")
+                    label_classes = "truncate cursor-pointer"
+                    if is_auto:
+                        label_classes += " text-green-700 dark:text-green-400"
+                    tag_label = ui.label(label).classes(label_classes)
+                    tag_label.on("click", lambda e, cb=cb: setattr(cb, "value", not cb.value))
+                    tag_label.tooltip("Click to toggle")
+
+                    if row["is_new"]:
+                        default_category = state["category_choice"].get(key, row.get("suggested_category_id"))
+                        select = ui.select(
+                            category_options,
+                            value=default_category,
+                            label="category",
+                        ).props("dense outlined").classes("w-full")
+                        select.on_value_change(lambda e, key=key: state["category_choice"].__setitem__(key, e.value))
+                    else:
+                        ui.element("div")  # empty grid cell - keeps columns aligned
+
+                    ui.linear_progress(value=row["confidence"], show_value=False).classes("w-full")
+                    ui.label(f"{row['confidence']:.0%}").classes("text-sm text-right")
+
+                    # Same grid cell serves either badge - a row is
+                    # never both auto-cleared and low-confidence.
+                    if is_auto:
+                        ui.icon("check_circle", color="green").props("size=xs").tooltip(
+                            f"Cleared {KIND_LABELS[kind]}'s auto-include confidence bar "
+                            f"({min_conf_by_kind[kind]:.0%}+) - pre-checked"
+                        )
+                    elif row.get("low_confidence"):
+                        ui.icon("warning", color="orange").props("size=xs").tooltip("Low confidence")
+                    else:
+                        ui.element("div")
+
+                    with ui.button(icon="more_vert").props("flat round dense size=sm"):
+                        with ui.menu():
+                            for src in row["sources"]:
+                                text = f"{src['source']}: {src.get('note') or ''}"
+                                item = ui.menu_item(text)
+                                if src.get("url"):
+                                    item.on("click", lambda url=src["url"]: ui.navigate.to(url, new_tab=True))
+
+        for track_id, info in page_tracks:
+            genre_rows = [r for r in info["rows"] if r["kind"] == "genre"]
+            mood_rows = [r for r in info["rows"] if r["kind"] == "mood"]
+            caption_bits = []
+            if genre_rows:
+                caption_bits.append(f"{len(genre_rows)} genre")
+            if mood_rows:
+                caption_bits.append(f"{len(mood_rows)} mood")
+            caption = " · ".join(caption_bits) + " candidate(s)"
+
+            n_siblings = len(siblings_by_track.get(track_id, ()))
+            if n_siblings:
+                # No live sync to announce anymore (see render_rows'
+                # "Copy checked genre tags to..." button) - just naming
+                # that sibling edit(s) exist and are detected, so it's
+                # obvious why that button showed up rather than a DJ
+                # wondering where it came from. Appended after
+                # " candidate(s)", not folded into caption_bits above,
+                # so it doesn't read as another "N candidate(s)" clause.
+                caption += f" — {n_siblings} sibling edit{'s' if n_siblings != 1 else ''} detected"
+
+            # Lazy render: a collapsed track only ever costs an
+            # expansion shell + one empty container (a couple of DOM
+            # nodes) - its actual candidate rows (the expensive part,
+            # ~7 elements each) are only built the first time it's
+            # opened, not for every track on the page whether you look
+            # at it or not. `built` guards against rebuilding on every
+            # subsequent open/close of the same track.
+            built = {"done": False}
+
+            def populate(container, genre_rows=genre_rows, mood_rows=mood_rows, built=built) -> None:
+                if built["done"]:
+                    return
+                built["done"] = True
+                with container:
+                    if genre_rows:
+                        render_rows(genre_rows, "Select all genre tags for this track")
+                    if mood_rows:
+                        render_rows(mood_rows, "Select all mood tags for this track")
+
+            # Starts open if it was open before whatever triggered this
+            # render (see state["expanded_tracks"]'s own comment) -
+            # populate it immediately in that case, since there's no
+            # fresh "just opened it" on_value_change event to do that
+            # for us when the expansion is created already-open.
+            was_expanded = track_id in state["expanded_tracks"]
+            expansion = ui.expansion(
+                f"{info['artist']} — {info['title']}", caption=caption, value=was_expanded
+            ).classes("w-full border border-gray-200 dark:border-gray-700 rounded-lg mb-2")
+            with expansion:
+                content = ui.column().classes("w-full gap-0")
+            if was_expanded:
+                populate(content)
+
+            def on_expansion_toggle(e, c=content, p=populate, tid=track_id) -> None:
+                if e.value:
+                    state["expanded_tracks"].add(tid)
+                    p(c)
+                else:
+                    state["expanded_tracks"].discard(tid)
+
+            expansion.on_value_change(on_expansion_toggle)
+
+        async def save():
+            approved = {
+                "genre": {"review": [], "create": []},
+                "mood": {"review": [], "create": []},
             }
-
-            tracks = group_by_track(genre_plan, mood_plan_)
-
-            # Ensure every row currently in the plan has a checked-default
-            # (pre-checked for auto rows, unchecked otherwise) regardless of
-            # which page it'll land on - a row on page 4 that the DJ never
-            # scrolls to still needs to count as pre-checked for Save
-            # Decisions, the same as it would if pagination didn't exist.
-            # setdefault only writes a value the first time a key is seen,
-            # so an already-answered checkbox (checked, unchecked, or a
-            # category picked) is never reset back to its default just
-            # because the page holding it got rebuilt. Also prunes both
-            # dicts down to keys that still exist - a full regenerate or a
-            # completed save both remove rows, and their leftover checked/
-            # category state should go with them rather than linger forever.
-            valid_keys = set()
+            skipped_no_category = 0
             for track_id, info in tracks.items():
                 for row in info["rows"]:
                     key = (track_id, row["kind"], row["tag"])
-                    valid_keys.add(key)
-                    state["checked"].setdefault(key, row.get("is_auto", False))
-            for d in (state["checked"], state["category_choice"]):
-                for key in list(d):
-                    if key not in valid_keys:
-                        del d[key]
-            state["expanded_tracks"] &= tracks.keys()
+                    if not state["checked"].get(key):
+                        continue
+                    if row["is_new"]:
+                        category_id = state["category_choice"].get(key, row.get("suggested_category_id"))
+                        if category_id is None:
+                            skipped_no_category += 1
+                            continue
+                        approved[row["kind"]]["create"].append({**row, "category_id": category_id})
+                    else:
+                        approved[row["kind"]]["review"].append(row)
 
-            # DJ edits of the same song (e.g. "Promiscuous (Intro Clean)" /
-            # "Promiscuous (Quick Hit Clean)") - see find_sibling_edits()'s
-            # own docstring. Genre/Subgenre only, never Mood/Theme: real
-            # testing on two edits of the same song found genre stayed
-            # essentially consistent between them, while mood-adjacent tags
-            # (a spoken intro reading as "Ballad"/"Vocal") genuinely
-            # differed - mood is edit-sensitive in a way genre isn't.
-            #
-            # Deliberately NOT a live binding - an earlier version of this
-            # auto-mirrored every check/uncheck bidirectionally between
-            # siblings, which turned out to have two real problems in
-            # practice: no visibility into which edits a track was actually
-            # linked to beyond a bare count, and no way to let one edit
-            # genuinely differ from its sibling without the live link
-            # fighting you. render_rows() below instead shows each
-            # sibling's real title and offers a one-time "Copy checked
-            # genre tags to..." action - copies whatever's checked right
-            # now onto the sibling(s) once, same "only where the sibling
-            # already proposed it as a candidate" rule as before, but
-            # nothing stays linked afterward. Unchecking something later
-            # never cascades anywhere.
-            siblings_by_track = find_sibling_edits(tracks)
+            if not any(approved[k][b] for k in ("genre", "mood") for b in ("review", "create")):
+                msg = "Nothing checked - nothing to save"
+                if skipped_no_category:
+                    msg = f"{skipped_no_category} new-tag row(s) checked but no category chosen - pick one first"
+                notify(msg, type="warning")
+                return
 
-            def toggle_all(e) -> None:
-                for track_id, info in tracks.items():
-                    for row in info["rows"]:
-                        state["checked"][(track_id, row["kind"], row["tag"])] = e.value
+            apply_fns = {"genre": genre_apply.apply_decisions, "mood": mood_apply.apply_decisions}
+            results: dict[str, dict] = {}
+            try:
+                for kind in ("genre", "mood"):
+                    if approved[kind]["review"] or approved[kind]["create"]:
+                        results[kind] = await run.io_bound(
+                            apply_fns[kind], approved[kind]["review"], approved[kind]["create"]
+                        )
+            except Exception as e:
+                # apply_decisions() itself only raises for something
+                # outside its own per-tag error handling (e.g. Lexicon
+                # unreachable) - without this, that exception would just
+                # die silently server-side and nothing would ever tell
+                # you Apply Tags didn't actually do anything.
+                notify(f"Apply failed: {e}", type="negative")
+                return
+
+            # Count unique tracks, not len(entries) summed across kinds -
+            # a track that got both a genre tag and a mood tag in the
+            # same save produces one entry in each result, which would
+            # double-count it as "2 tracks" rather than the 1 it is.
+            touched_tracks = {e["track_id"] for r in results.values() for e in r["entries"]}
+            n_tags = sum(len(e["tags_added"]) for r in results.values() for e in r["entries"])
+            failed = [f for r in results.values() for f in r["failed_creates"]]
+            msg = f"Applied {n_tags} tag(s) across {len(touched_tracks)} track(s)"
+            if skipped_no_category:
+                msg += f" - skipped {skipped_no_category} new-tag row(s) with no category chosen"
+            if failed:
+                names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed)
+                msg += f" - failed to create: {names}"
+            notify(msg, type="positive" if not failed else "warning")
+
+            # Drop whatever was actually written from the in-memory
+            # plans - otherwise those rows sit there still checked, the
+            # review screen keeps showing tags that already made it to
+            # Lexicon, and generate()'s "you have unsaved checked rows"
+            # guard falsely trips on a plan that was, in fact, just
+            # saved. Rows that were checked but skipped (no category) or
+            # failed to create are deliberately left in place, still
+            # checked - they still need a decision, nothing happened.
+            plans = {"genre": state["genre_plan"], "mood": state["mood_plan"]}
+            changed = False
+            for kind, result in results.items():
+                plan = plans[kind]
+                if not plan:
+                    continue
+                applied_pairs = {(e["track_id"], tag) for e in result["entries"] for tag in e["tags_added"]}
+                if not applied_pairs:
+                    continue
+                changed = True
+                for bucket in ("auto", "review", "create"):
+                    plan[bucket] = [r for r in plan.get(bucket, []) if (r["track_id"], r["tag"]) not in applied_pairs]
+            if changed:
                 review_section.refresh()
 
-            # value=False used to be a hard-coded literal here, not derived
-            # from state - harmless before toggle_all() called refresh()
-            # unconditionally (nothing ever rebuilt this checkbox out from
-            # under itself), but once it did, every click rebuilt this exact
-            # checkbox back to its literal False, snapping it right back to
-            # unchecked even though the click had, in fact, just checked
-            # every row (confirmed directly: the underlying state["checked"]
-            # writes always worked correctly - only this checkbox's own
-            # displayed value was wrong). Computed fresh each render instead,
-            # same pattern the Reorganize section's own "Select all moves"
-            # checkbox already uses.
-            all_checked = bool(valid_keys) and all(state["checked"].get(key) for key in valid_keys)
-            with ui.row().classes("items-center gap-2"):
-                # Bare "Select all" didn't say what it was all of - genre,
-                # mood, one track, every track, the visible page? It's
-                # actually every genre and mood candidate row across the
-                # whole plan (see toggle_all() above), independent of
-                # pagination - matching that in the label instead of
-                # leaving it to be inferred.
-                ui.checkbox("Select all tags (every track)", value=all_checked, on_change=toggle_all)
-                ui.label(f"{len(tracks)} track(s) with proposed tags - high-confidence ones are pre-checked, review the rest").classes(
-                    "text-gray-500"
-                )
+        ui.button("Apply Tags", on_click=save).props("color=primary").classes("mt-4")
 
-            # Pagination - at real-library scale (thousands of tracks) every
-            # track's expansion showing up at once, even collapsed, was
-            # measured at 500K+ DOM nodes and 20+ seconds just to build the
-            # element tree for 2,000 synthetic tracks before a page-size
-            # limit existed. Slicing to one page's worth of track shells is
-            # the actual fix for that; row content is also deferred until a
-            # track is opened (see build_track_content below) so even a full
-            # page of collapsed tracks stays cheap.
-            sorted_tracks = sorted(tracks.items(), key=lambda kv: ((kv[1]["artist"] or ""), kv[1]["title"] or ""))
-            page_size = state["page_size"]
-            total_pages = max(1, -(-len(sorted_tracks) // page_size))  # ceil div
-            state["page"] = max(1, min(state["page"], total_pages))
-            start = (state["page"] - 1) * page_size
-            page_tracks = sorted_tracks[start:start + page_size]
-
-            with ui.row().classes("items-center gap-3"):
-                def on_page_size_change(e) -> None:
-                    state["page_size"] = e.value
-                    state["page"] = 1
-                    review_section.refresh()
-
-                ui.select(PAGE_SIZE_OPTIONS, value=page_size, label="tracks per page").props("dense").classes(
-                    "w-32"
-                ).on_value_change(on_page_size_change)
-
-                if total_pages > 1:
-                    def on_page_change(e) -> None:
-                        state["page"] = e.value
-                        review_section.refresh()
-
-                    ui.pagination(1, total_pages, value=state["page"], direction_links=True, on_change=on_page_change)
-                    ui.label(f"tracks {start + 1}-{min(start + page_size, len(sorted_tracks))} of {len(sorted_tracks)}").classes(
-                        "text-xs text-gray-500"
-                    )
-
-            def render_rows(rows: list[dict], select_all_label: str) -> None:
-                """One kind's sub-group within a track's expansion - its
-                own heading, its own "select all", its own confidence-
-                sorted rows. Shared by both kinds; only the row data and
-                label differ."""
-                rows = sorted(rows, key=lambda r: -r["confidence"])
-                kind = rows[0]["kind"]
-                track_id = rows[0]["track_id"]
-
-                def toggle_sub(e, rows=rows, kind=kind) -> None:
-                    for row in rows:
-                        state["checked"][(row["track_id"], kind, row["tag"])] = e.value
-                    review_section.refresh()
-
-                ui.label(KIND_LABELS[kind]).classes("text-xs font-bold text-gray-500 uppercase mt-2")
-                with ui.row().classes("items-center gap-2 px-2 py-1 mb-1 bg-gray-50 dark:bg-gray-800 rounded"):
-                    ui.checkbox(select_all_label, value=False, on_change=toggle_sub).props("dense")
-
-                    sibling_ids = siblings_by_track.get(track_id, ()) if kind == "genre" else ()
-                    if sibling_ids:
-                        sibling_titles = [tracks[sid]["title"] for sid in sibling_ids]
-                        btn_label = (
-                            f"Copy checked genre tags to \"{sibling_titles[0]}\""
-                            if len(sibling_ids) == 1
-                            else f"Copy checked genre tags to {len(sibling_ids)} sibling edits"
-                        )
-
-                        def copy_to_siblings(sibling_ids=sibling_ids, track_id=track_id) -> None:
-                            checked_tags = [
-                                row["tag"] for row in rows
-                                if state["checked"].get((track_id, "genre", row["tag"]))
-                            ]
-                            if not checked_tags:
-                                notify("No genre tags checked on this track yet - check some, then copy", type="warning")
-                                return
-                            copied = 0
-                            for sibling_id in sibling_ids:
-                                for tag in checked_tags:
-                                    sibling_key = (sibling_id, "genre", tag)
-                                    # Only where the sibling's own audio/catalog
-                                    # lookup already proposed this exact tag as a
-                                    # candidate - never invents one it didn't
-                                    # earn. A one-time copy, not a live link:
-                                    # nothing here keeps watching for future
-                                    # changes on either track.
-                                    if sibling_key in valid_keys and not state["checked"].get(sibling_key):
-                                        state["checked"][sibling_key] = True
-                                        copied += 1
-                            if copied:
-                                notify(
-                                    f"Copied {len(checked_tags)} checked tag(s) to {len(sibling_ids)} "
-                                    f"sibling edit(s) - {copied} new check(s)",
-                                    type="positive",
-                                )
-                            else:
-                                notify(
-                                    "Nothing new to copy - sibling edit(s) either already have these "
-                                    "tags checked or never proposed them as candidates",
-                                    type="warning",
-                                )
-                            review_section.refresh()
-
-                        copy_btn = ui.button(btn_label, on_click=copy_to_siblings).props("outline dense size=sm")
-                        if len(sibling_ids) > 1:
-                            copy_btn.tooltip(", ".join(sibling_titles))
-
-                for row in rows:
-                    is_auto = row.get("is_auto", False)
-                    key = (row["track_id"], kind, row["tag"])
-                    with ui.element("div").style(ROW_GRID).classes(
-                        "w-full px-2 py-2 border-b border-gray-100 dark:border-gray-800 "
-                        "hover:bg-gray-50 dark:hover:bg-gray-800/60"
-                        + (" bg-green-50 dark:bg-green-950/30" if is_auto else "")
-                    ):
-                        # Pre-checked, not just flagged - a row that already
-                        # cleared its action's auto-include bar shouldn't
-                        # need an extra click on top of the one Save
-                        # Decisions click everything else needs. Still just
-                        # a checkbox: uncheck it like any other if you
-                        # disagree with this one. Reads its initial value
-                        # from state["checked"] (already defaulted above)
-                        # and writes back on every change, rather than being
-                        # the source of truth itself - the checkbox object
-                        # doesn't survive a page turn, the dict does.
-                        cb = ui.checkbox(value=state["checked"][key]).props("dense")
-                        cb.on_value_change(lambda e, key=key: state["checked"].__setitem__(key, e.value))
-
-                        label = row["tag"] + ("  · new" if row["is_new"] else "")
-                        label_classes = "truncate cursor-pointer"
-                        if is_auto:
-                            label_classes += " text-green-700 dark:text-green-400"
-                        tag_label = ui.label(label).classes(label_classes)
-                        tag_label.on("click", lambda e, cb=cb: setattr(cb, "value", not cb.value))
-                        tag_label.tooltip("Click to toggle")
-
-                        if row["is_new"]:
-                            default_category = state["category_choice"].get(key, row.get("suggested_category_id"))
-                            select = ui.select(
-                                category_options,
-                                value=default_category,
-                                label="category",
-                            ).props("dense outlined").classes("w-full")
-                            select.on_value_change(lambda e, key=key: state["category_choice"].__setitem__(key, e.value))
-                        else:
-                            ui.element("div")  # empty grid cell - keeps columns aligned
-
-                        ui.linear_progress(value=row["confidence"], show_value=False).classes("w-full")
-                        ui.label(f"{row['confidence']:.0%}").classes("text-sm text-right")
-
-                        # Same grid cell serves either badge - a row is
-                        # never both auto-cleared and low-confidence.
-                        if is_auto:
-                            ui.icon("check_circle", color="green").props("size=xs").tooltip(
-                                f"Cleared {KIND_LABELS[kind]}'s auto-include confidence bar "
-                                f"({min_conf_by_kind[kind]:.0%}+) - pre-checked"
-                            )
-                        elif row.get("low_confidence"):
-                            ui.icon("warning", color="orange").props("size=xs").tooltip("Low confidence")
-                        else:
-                            ui.element("div")
-
-                        with ui.button(icon="more_vert").props("flat round dense size=sm"):
-                            with ui.menu():
-                                for src in row["sources"]:
-                                    text = f"{src['source']}: {src.get('note') or ''}"
-                                    item = ui.menu_item(text)
-                                    if src.get("url"):
-                                        item.on("click", lambda url=src["url"]: ui.navigate.to(url, new_tab=True))
-
-            for track_id, info in page_tracks:
-                genre_rows = [r for r in info["rows"] if r["kind"] == "genre"]
-                mood_rows = [r for r in info["rows"] if r["kind"] == "mood"]
-                caption_bits = []
-                if genre_rows:
-                    caption_bits.append(f"{len(genre_rows)} genre")
-                if mood_rows:
-                    caption_bits.append(f"{len(mood_rows)} mood")
-                caption = " · ".join(caption_bits) + " candidate(s)"
-
-                n_siblings = len(siblings_by_track.get(track_id, ()))
-                if n_siblings:
-                    # No live sync to announce anymore (see render_rows'
-                    # "Copy checked genre tags to..." button) - just naming
-                    # that sibling edit(s) exist and are detected, so it's
-                    # obvious why that button showed up rather than a DJ
-                    # wondering where it came from. Appended after
-                    # " candidate(s)", not folded into caption_bits above,
-                    # so it doesn't read as another "N candidate(s)" clause.
-                    caption += f" — {n_siblings} sibling edit{'s' if n_siblings != 1 else ''} detected"
-
-                # Lazy render: a collapsed track only ever costs an
-                # expansion shell + one empty container (a couple of DOM
-                # nodes) - its actual candidate rows (the expensive part,
-                # ~7 elements each) are only built the first time it's
-                # opened, not for every track on the page whether you look
-                # at it or not. `built` guards against rebuilding on every
-                # subsequent open/close of the same track.
-                built = {"done": False}
-
-                def populate(container, genre_rows=genre_rows, mood_rows=mood_rows, built=built) -> None:
-                    if built["done"]:
-                        return
-                    built["done"] = True
-                    with container:
-                        if genre_rows:
-                            render_rows(genre_rows, "Select all genre tags for this track")
-                        if mood_rows:
-                            render_rows(mood_rows, "Select all mood tags for this track")
-
-                # Starts open if it was open before whatever triggered this
-                # render (see state["expanded_tracks"]'s own comment) -
-                # populate it immediately in that case, since there's no
-                # fresh "just opened it" on_value_change event to do that
-                # for us when the expansion is created already-open.
-                was_expanded = track_id in state["expanded_tracks"]
-                expansion = ui.expansion(
-                    f"{info['artist']} — {info['title']}", caption=caption, value=was_expanded
-                ).classes("w-full border border-gray-200 dark:border-gray-700 rounded-lg mb-2")
-                with expansion:
-                    content = ui.column().classes("w-full gap-0")
-                if was_expanded:
-                    populate(content)
-
-                def on_expansion_toggle(e, c=content, p=populate, tid=track_id) -> None:
-                    if e.value:
-                        state["expanded_tracks"].add(tid)
-                        p(c)
-                    else:
-                        state["expanded_tracks"].discard(tid)
-
-                expansion.on_value_change(on_expansion_toggle)
-
-            async def save():
-                approved = {
-                    "genre": {"review": [], "create": []},
-                    "mood": {"review": [], "create": []},
-                }
-                skipped_no_category = 0
-                for track_id, info in tracks.items():
-                    for row in info["rows"]:
-                        key = (track_id, row["kind"], row["tag"])
-                        if not state["checked"].get(key):
-                            continue
-                        if row["is_new"]:
-                            category_id = state["category_choice"].get(key, row.get("suggested_category_id"))
-                            if category_id is None:
-                                skipped_no_category += 1
-                                continue
-                            approved[row["kind"]]["create"].append({**row, "category_id": category_id})
-                        else:
-                            approved[row["kind"]]["review"].append(row)
-
-                if not any(approved[k][b] for k in ("genre", "mood") for b in ("review", "create")):
-                    msg = "Nothing checked - nothing to save"
-                    if skipped_no_category:
-                        msg = f"{skipped_no_category} new-tag row(s) checked but no category chosen - pick one first"
-                    notify(msg, type="warning")
-                    return
-
-                apply_fns = {"genre": genre_apply.apply_decisions, "mood": mood_apply.apply_decisions}
-                results: dict[str, dict] = {}
-                try:
-                    for kind in ("genre", "mood"):
-                        if approved[kind]["review"] or approved[kind]["create"]:
-                            results[kind] = await run.io_bound(
-                                apply_fns[kind], approved[kind]["review"], approved[kind]["create"]
-                            )
-                except Exception as e:
-                    # apply_decisions() itself only raises for something
-                    # outside its own per-tag error handling (e.g. Lexicon
-                    # unreachable) - without this, that exception would just
-                    # die silently server-side and nothing would ever tell
-                    # you Apply Tags didn't actually do anything.
-                    notify(f"Apply failed: {e}", type="negative")
-                    return
-
-                # Count unique tracks, not len(entries) summed across kinds -
-                # a track that got both a genre tag and a mood tag in the
-                # same save produces one entry in each result, which would
-                # double-count it as "2 tracks" rather than the 1 it is.
-                touched_tracks = {e["track_id"] for r in results.values() for e in r["entries"]}
-                n_tags = sum(len(e["tags_added"]) for r in results.values() for e in r["entries"])
-                failed = [f for r in results.values() for f in r["failed_creates"]]
-                msg = f"Applied {n_tags} tag(s) across {len(touched_tracks)} track(s)"
-                if skipped_no_category:
-                    msg += f" - skipped {skipped_no_category} new-tag row(s) with no category chosen"
-                if failed:
-                    names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed)
-                    msg += f" - failed to create: {names}"
-                notify(msg, type="positive" if not failed else "warning")
-
-                # At least one genre tag actually made it to Lexicon -
-                # quietly refresh Reorganize's own data in the
-                # background (it's a separate view now, see
-                # tagging_view/reorganize_view above, not something to
-                # force-navigate to as a side effect of Apply Tags) so
-                # it's already current whenever the DJ chooses to
-                # switch over via "Reorganize Genre Tags →", rather
-                # than needing its own click first.
-                if results.get("genre", {}).get("entries"):
-                    await refresh_reorg_plan()
-
-                # Drop whatever was actually written from the in-memory
-                # plans - otherwise those rows sit there still checked, the
-                # review screen keeps showing tags that already made it to
-                # Lexicon, and generate()'s "you have unsaved checked rows"
-                # guard falsely trips on a plan that was, in fact, just
-                # saved. Rows that were checked but skipped (no category) or
-                # failed to create are deliberately left in place, still
-                # checked - they still need a decision, nothing happened.
-                plans = {"genre": state["genre_plan"], "mood": state["mood_plan"]}
-                changed = False
-                for kind, result in results.items():
-                    plan = plans[kind]
-                    if not plan:
-                        continue
-                    applied_pairs = {(e["track_id"], tag) for e in result["entries"] for tag in e["tags_added"]}
-                    if not applied_pairs:
-                        continue
-                    changed = True
-                    for bucket in ("auto", "review", "create"):
-                        plan[bucket] = [r for r in plan.get(bucket, []) if (r["track_id"], r["tag"]) not in applied_pairs]
-                if changed:
-                    review_section.refresh()
-
-            ui.button("Apply Tags", on_click=save).props("color=primary").classes("mt-4")
-
-        review_section()
-
-    # Reorganize Genre Tags - a separate, later step from the
-    # Generate/Apply flow above (see reorganize_genres.py's own
-    # docstring): moves existing genre tags into per-family Lexicon
-    # categories, typically run after a batch of genre tags has
-    # already been applied/created. Its own view (see tagging_view/
-    # reorganize_view above), not gated behind having just applied
-    # anything this session - whatever's already in Lexicon is fair
-    # game to check and reorganize any time, not just right after a
-    # fresh batch. save() below still refreshes reorg_plan quietly in
-    # the background the moment a genre tag actually lands in Lexicon,
-    # so arriving here via the nav button already has fresh data
-    # rather than needing its own click first.
-    with reorganize_view:
-        ui.label("Reorganize Genre Tags").classes("text-lg font-bold")
-        ui.label(
-            "Build (or maintain) a consistent per-family category structure for every "
-            "genre/subgenre tag in your library"
-        ).classes("text-sm text-gray-500 mb-2")
-
-    with reorganize_view:
-        ui.label(
-            "Matches your existing genre tags against Discogs' own 400-style genre taxonomy "
-            "(config/genre_taxonomy.yaml), then walks you through getting all of them correctly "
-            "organized: pick a family for anything ambiguous or unrecognized, create whatever "
-            "per-family categories are missing, then move and rename tags to match - one pass "
-            "the first time through is enough to get a solid foundation in place. Re-running "
-            "later (as new tags get created) only ever has to handle what's actually new or "
-            "still unresolved; already-organized tags just report clean, so there's no separate "
-            "\"setup mode\" to switch out of. Never merges two tags into one; renaming is "
-            "limited to matching a taxonomy spelling a tag's own name already is (never touches "
-            "a tag you manually placed, since its exact wording might be the only reason you "
-            "recognize it later) - see the README's \"Reorganize\" section for the full rationale."
-        ).classes("text-xs text-gray-500 mb-2")
-
-        reorg_status = ui.label("").classes("text-sm text-gray-500")
-
-        # All 15 families, not just ones with a matching tag already in
-        # the library ("active" - see genre_taxonomy.build_lookup()'s
-        # docstring) - the "Not in this taxonomy" picker below needs the
-        # full list, since a DJ placing a tag by hand is exactly the
-        # case where a family might have no other matching tag yet.
-        # Loaded once (a small, static file read), not on every
-        # refresh.
-        family_choices = genre_taxonomy.list_families(genre_taxonomy.load_taxonomy())
-        family_options = {key: canonical for key, canonical in family_choices}
-
-        async def refresh_reorg_plan() -> bool:
-            """Re-runs plan_moves() (with whatever ambiguous/unmatched
-            tags have already been resolved this session) and updates
-            state - shared by the initial "Check Genre Organization"
-            click, the post-apply re-check, the post-create-categories
-            re-check, and each ambiguous/manual resolution, so all of
-            them stay in sync with exactly the same logic rather than
-            several slightly-different copies of it. Returns whether it
-            succeeded, so a caller mid-action (e.g. after just
-            resolving one ambiguous tag) knows whether to still show
-            its own success notification."""
-            try:
-                plan = await run.io_bound(
-                    reorganize_genres.plan_moves,
-                    state["reorg_ambiguous_resolved"],
-                    state["reorg_manual_assignments"],
-                )
-            except Exception as e:
-                notify(f"Couldn't check genre organization: {e}", type="negative")
-                return False
-            state["reorg_plan"] = plan
-            # Same setdefault-then-prune pattern as the main review
-            # list above - a row stays checked/unchecked across a
-            # re-check unless it's no longer proposed at all. Moves and
-            # renames share one "Apply Checked Changes" action (see
-            # reorg_section below), so they share one valid-id set here
-            # too - a tag id is unique across both buckets.
-            valid_ids = {row["id"] for row in plan["moves"]} | {row["id"] for row in plan["renames"]}
-            for tag_id in list(state["reorg_checked"]):
-                if tag_id not in valid_ids:
-                    del state["reorg_checked"][tag_id]
-            for row in plan["moves"] + plan["renames"]:
-                state["reorg_checked"].setdefault(row["id"], True)
-            # Same prune, no setdefault - this one defaults to
-            # unchecked (see its own comment in build_ui()'s state
-            # dict), so there's nothing to default a still-valid id to.
-            valid_unmatched_ids = {row["id"] for row in plan["unmatched"]}
-            for tag_id in list(state["reorg_unmatched_checked"]):
-                if tag_id not in valid_unmatched_ids:
-                    del state["reorg_unmatched_checked"][tag_id]
-            reorg_section.refresh()
-            return True
-
-        async def check_reorg() -> None:
-            reorg_status.text = "checking..."
-            await refresh_reorg_plan()
-            reorg_status.text = ""
-
-        ui.button("Check Genre Organization", on_click=check_reorg).props("outline")
-
-        @ui.refreshable
-        def reorg_section() -> None:
-            plan = state["reorg_plan"]
-            if plan is None:
-                return
-            moves = plan["moves"]
-            renames = plan["renames"]
-            already_correct, needs_category, ambiguous, unmatched = (
-                plan["already_correct"], plan["needs_category"], plan["ambiguous"], plan["unmatched"]
-            )
-            fully_done = len(already_correct) - len(renames)
-
-            ui.label(
-                f"{len(moves)} would move, {len(renames)} would rename, {fully_done} already correct, "
-                f"{len(needs_category)} need a category created first, {len(ambiguous)} ambiguous, "
-                f"{len(unmatched)} not in this taxonomy"
-            ).classes("text-sm mt-2")
-
-            # Order matters here: needs-category, ambiguous, and
-            # unmatched all feed into "would move"/"would rename"
-            # (creating a category, resolving an ambiguous tag, or
-            # placing an unmatched tag all move it from one of those
-            # buckets straight into the actionable ones below - see
-            # refresh_reorg_plan()), so they come first. A DJ pointed
-            # this out directly after working through the screen top to
-            # bottom and finding "would move" first, then a "needs a
-            # category" section further down that would have unblocked
-            # more moves if it'd been done first - the natural order is
-            # unblock, then act, not the reverse.
-            if needs_category:
-                by_family: dict[str, list[dict]] = {}
-                for row in needs_category:
-                    by_family.setdefault(row["target_category"], []).append(row)
-
-                async def create_missing_categories(targets=tuple(sorted(by_family.keys()))) -> None:
-                    with ui.dialog() as confirm_dialog, ui.card():
-                        ui.label(
-                            f"Create {len(targets)} new categor{'y' if len(targets) == 1 else 'ies'} in "
-                            f"Lexicon?"
-                        )
-                        with ui.column().classes("gap-0 my-2"):
-                            for t in targets:
-                                ui.label(f"• {t}").classes("text-sm")
-                        ui.label(
-                            "Each starts empty - nothing moves into it until you check it under "
-                            "\"Would move\" and click \"Apply Checked Changes\" separately."
-                        ).classes("text-xs text-gray-500")
-                        with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                            ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
-                            ui.button(
-                                "Create Categories", color="primary",
-                                on_click=lambda: confirm_dialog.submit("continue"),
-                            )
-                    if await confirm_dialog != "continue":
-                        return
-                    result = await run.io_bound(reorganize_genres.create_categories, list(targets))
-                    msg = f"Created {len(result['ok'])} categor{'y' if len(result['ok']) == 1 else 'ies'}"
-                    if result["failures"]:
-                        names = ", ".join(f"{f['label']!r} ({f['error']})" for f in result["failures"])
-                        msg += f" - {len(result['failures'])} failed: {names}"
-                    notify(msg, type="positive" if not result["failures"] else "warning")
-                    await refresh_reorg_plan()
-
-                with ui.expansion(f"Needs a category created first ({len(needs_category)})", value=True).classes(
-                    "w-full"
-                ):
-                    ui.label(
-                        "Create these in Lexicon yourself, then click \"Check Genre Organization\" "
-                        "again - or let Track Record create them (each starts empty; see the button "
-                        "below for exactly what that does). Do this before \"Would move\" below - "
-                        "creating these unblocks more tags to move in the same pass."
-                    ).classes("text-xs text-gray-500 mb-2")
-                    ui.button(
-                        f"Create {len(by_family)} Missing Categor{'y' if len(by_family) == 1 else 'ies'}",
-                        on_click=create_missing_categories,
-                    ).props("outline dense size=sm").classes("mb-2")
-                    for target, rows in sorted(by_family.items()):
-                        ui.label(f"{target} ({len(rows)})").classes("text-sm font-medium mt-2")
-                        # Chips instead of one long comma-joined line -
-                        # a family with 17 tags read as an unbroken wall
-                        # of text otherwise; wrapped chips scan the same
-                        # way a tag cloud does.
-                        with ui.row().classes("gap-1 flex-wrap mb-1"):
-                            for row in sorted(rows, key=lambda r: r["label"]):
-                                ui.label(row["label"]).classes(
-                                    "text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5"
-                                )
-
-            if ambiguous:
-                async def resolve_ambiguous(row: dict, choice: tuple[str, str, str, str]) -> None:
-                    # Keyed by normalized name, not this row's own tag
-                    # id - see plan_moves()'s resolved_ambiguous
-                    # docstring for why: the ambiguity is a fact about
-                    # the taxonomy, not this one Lexicon tag, so
-                    # resolving it applies to every tag sharing this
-                    # name.
-                    norm = lexicon_client._normalize_label(row["label"])
-                    state["reorg_ambiguous_resolved"][norm] = choice
-                    if await refresh_reorg_plan():
-                        notify(f"\"{row['label']}\" resolved to {choice[1]} ({choice[3]})", type="positive")
-
-                with ui.expansion(f"Ambiguous - needs your call ({len(ambiguous)})", value=True).classes("w-full"):
-                    ui.label(
-                        "Pick which family each of these actually belongs to - the same style name "
-                        "genuinely exists in more than one Discogs family, so this isn't guessable "
-                        "automatically. Resolving one applies to every tag sharing that name."
-                    ).classes("text-xs text-gray-500 mb-2")
-                    for row in ambiguous:
-                        with ui.row().classes("items-center gap-2 mt-1"):
-                            ui.label(row["label"]).classes("text-sm font-medium")
-                            ui.label(f"currently in {row['current_category']}").classes(
-                                "text-xs text-gray-500"
-                            )
-                        with ui.row().classes("gap-1 flex-wrap ml-1 mb-1"):
-                            for choice in row["candidates"]:
-                                family_canonical, subgenre_canonical = choice[1], choice[3]
-                                ui.button(
-                                    f"{family_canonical} ({subgenre_canonical})",
-                                    on_click=lambda row=row, choice=choice: resolve_ambiguous(row, choice),
-                                ).props("outline dense size=sm")
-
-            if unmatched:
-                def _record_assignment(row: dict, family_key: str, family_canonical: str) -> None:
-                    # Same keyed-by-normalized-name shape as
-                    # resolved_ambiguous, but tracked separately (see
-                    # state["reorg_manual_assignments"]'s own comment
-                    # for why) - a manual pick never implies a rename,
-                    # so subgenre_key stays "__self__"/subgenre_canonical
-                    # stays the bare family name the same way a
-                    # family-self match already does, but plan_moves()
-                    # suppresses needs_rename for anything reached
-                    # through manual_assignments regardless.
-                    norm = lexicon_client._normalize_label(row["label"])
-                    state["reorg_manual_assignments"][norm] = (family_key, family_canonical, "__self__", family_canonical)
-
-                async def assign_unmatched(row: dict, family_key: str) -> None:
-                    family_canonical = family_options[family_key]
-                    _record_assignment(row, family_key, family_canonical)
-                    if await refresh_reorg_plan():
-                        notify(f"\"{row['label']}\" assigned to {family_canonical}", type="positive")
-
-                async def bulk_assign_unmatched(rows: list[dict], family_key: str) -> None:
-                    family_canonical = family_options[family_key]
-                    for row in rows:
-                        _record_assignment(row, family_key, family_canonical)
-                    if await refresh_reorg_plan():
-                        notify(f"Assigned {len(rows)} tag(s) to {family_canonical}", type="positive")
-
-                # A whole group's own bulk button (above) only ever
-                # covers "this entire group is one family" - a group a
-                # DJ pointed out directly was genuinely mixed (their own
-                # "Sub-genre - R&B" catch-all turned out to hold plenty
-                # of real Hip-Hop) needs splitting into more than one
-                # batch instead. Same underlying mechanism as the
-                # per-group bulk button, just working from a DJ-picked
-                # subset (via the checkbox on each row below) instead of
-                # a whole group - check the Hip-Hop-flavored ones, pick
-                # Hip Hop, Assign Checked; check what's left, pick Funk
-                # / Soul, Assign Checked again.
-                def on_unmatched_check_change(e, key: int) -> None:
-                    state["reorg_unmatched_checked"][key] = e.value
-                    n = sum(1 for v in state["reorg_unmatched_checked"].values() if v)
-                    checked_count_label.text = f"{n} checked"
-
-                async def assign_checked_unmatched() -> None:
-                    family_key = assign_checked_select.value
-                    if not family_key:
-                        notify("Pick a family first", type="warning")
-                        return
-                    checked_rows = [row for row in unmatched if state["reorg_unmatched_checked"].get(row["id"])]
-                    if not checked_rows:
-                        notify("Nothing checked", type="warning")
-                        return
-                    family_canonical = family_options[family_key]
-                    for row in checked_rows:
-                        _record_assignment(row, family_key, family_canonical)
-                        state["reorg_unmatched_checked"].pop(row["id"], None)
-                    if await refresh_reorg_plan():
-                        notify(f"Assigned {len(checked_rows)} tag(s) to {family_canonical}", type="positive")
-
-                by_cat: dict[str, list[dict]] = {}
-                for row in unmatched:
-                    by_cat.setdefault(row["current_category"], []).append(row)
-
-                # A whole group's current category sometimes already IS
-                # a real family's own "Sub-genre - {Family}" convention
-                # (e.g. every tag currently sitting in "Sub-genre -
-                # Rock" is overwhelmingly likely to actually belong to
-                # the Rock family - it's just not in this taxonomy
-                # under that exact spelling) - offering one bulk button
-                # for that whole group turns 35 individual picks into
-                # one, while a genuinely mixed group (a DJ's own
-                # "Sub-genre - R&B" catch-all turned out to hold plenty
-                # of real Hip-Hop, confirmed directly) has no obvious
-                # single answer and simply gets no bulk button, falling
-                # back to the per-tag picker below - never forced,
-                # either way: a bulk assignment is still just a starting
-                # point, any individual tag can still be reassigned
-                # afterward via its own row.
-                category_to_family = {
-                    f"{reorganize_genres.CATEGORY_PREFIX}{canonical}": key for key, canonical in family_choices
-                }
-
-                with ui.expansion(f"Not in this taxonomy - needs your call ({len(unmatched)})", value=True).classes(
-                    "w-full"
-                ):
-                    ui.label(
-                        "Doesn't match any name or spelling in the Discogs taxonomy - could be a "
-                        "custom label you made up, or a real subgenre this taxonomy just doesn't "
-                        "list yet. Pick a family for each one you want organized; skip whatever "
-                        "isn't worth deciding on right now, they'll still be here next time. Never "
-                        "renamed - see the intro text above for why. Check a few and use \"Assign "
-                        "Checked\" below to split a mixed group into more than one batch at once, "
-                        "or just use each row's own picker one at a time."
-                    ).classes("text-xs text-gray-500 mb-2")
-                    with ui.row().classes("items-center gap-2 mb-2"):
-                        checked_count_label = ui.label("0 checked").classes("text-xs text-gray-500")
-                        assign_checked_select = ui.select(
-                            family_options, label="assign checked to", with_input=True,
-                        ).props("dense outlined").classes("w-56")
-                        ui.button("Assign Checked", on_click=assign_checked_unmatched).props("outline dense size=sm")
-                    for cat, rows in sorted(by_cat.items(), key=lambda kv: -len(kv[1])):
-                        with ui.row().classes("items-center gap-2 mt-2"):
-                            ui.label(f"{cat} ({len(rows)})").classes("text-xs font-medium text-gray-500")
-                            bulk_family_key = category_to_family.get(cat)
-                            if bulk_family_key is not None:
-                                ui.button(
-                                    f"Assign all {len(rows)} to {family_options[bulk_family_key]}",
-                                    on_click=lambda rows=rows, key=bulk_family_key: bulk_assign_unmatched(rows, key),
-                                ).props("outline dense size=sm")
-                        for row in sorted(rows, key=lambda r: r["label"]):
-                            key = row["id"]
-                            with ui.row().classes("items-center gap-2"):
-                                cb = ui.checkbox(value=state["reorg_unmatched_checked"].get(key, False)).props("dense")
-                                cb.on_value_change(lambda e, key=key: on_unmatched_check_change(e, key))
-                                ui.label(row["label"]).classes("text-sm")
-                                ui.select(
-                                    family_options, label="assign to family", with_input=True,
-                                    on_change=lambda e, row=row: assign_unmatched(row, e.value),
-                                ).props("dense outlined").classes("w-56")
-
-            if moves or renames:
-                def toggle_all_reorg(e) -> None:
-                    for row in moves + renames:
-                        state["reorg_checked"][row["id"]] = e.value
-                    reorg_section.refresh()
-
-                all_checked = all(state["reorg_checked"].get(row["id"], True) for row in moves + renames)
-                ui.checkbox("Select all changes", value=all_checked, on_change=toggle_all_reorg).props("dense")
-
-            if moves:
-                by_target: dict[str, list[dict]] = {}
-                for row in moves:
-                    by_target.setdefault(row["target_category"], []).append(row)
-
-                for target, rows in sorted(by_target.items()):
-                    hand_named = {r["current_category"] for r in rows} - {target} - {"(no category)"}
-                    hand_named = {c for c in hand_named if not c.startswith("Sub-genre - ")}
-                    with ui.expansion(f"{target} ({len(rows)})").classes("w-full"):
-                        if hand_named:
-                            ui.label(
-                                f"Pulls tag(s) out of your existing "
-                                f"categor{'y' if len(hand_named) == 1 else 'ies'}: {', '.join(sorted(hand_named))}"
-                            ).classes("text-xs text-orange-500 mb-1")
-                        for row in sorted(rows, key=lambda r: r["subgenre"]):
-                            key = row["id"]
-                            with ui.row().classes("items-center gap-2"):
-                                cb = ui.checkbox(value=state["reorg_checked"].get(key, True)).props("dense")
-                                cb.on_value_change(lambda e, key=key: state["reorg_checked"].__setitem__(key, e.value))
-                                # Tag name gets its own visual weight;
-                                # current category is secondary/muted.
-                                # Dropping the destination entirely was
-                                # an overcorrection - relying on the
-                                # enclosing group's own header to carry
-                                # "where" meant losing that context the
-                                # moment you're a few rows down and the
-                                # header has scrolled out of view
-                                # (reported directly). A short "→
-                                # {family}" chip - just the bare family
-                                # name, not the full "Sub-genre - X"
-                                # category string that caused the
-                                # original "Acid Jazz Sub-genre - R&B →
-                                # Sub-genre - Electronic" wall-of-text
-                                # problem - restores that per-row
-                                # without reintroducing it.
-                                if row["needs_rename"]:
-                                    ui.label(row["label"]).classes(
-                                        "text-sm text-gray-400 line-through decoration-1"
-                                    )
-                                    ui.icon("arrow_forward").classes("text-gray-400").props("size=xs")
-                                    ui.label(row["canonical_label"]).classes("text-sm font-medium")
-                                else:
-                                    ui.label(row["label"]).classes("text-sm font-medium")
-                                if row["current_category"] != "(no category)":
-                                    ui.label(f"from {row['current_category']}").classes(
-                                        "text-xs text-gray-500"
-                                    )
-                                else:
-                                    ui.label("uncategorized").classes("text-xs text-gray-400 italic")
-                                ui.icon("arrow_forward").classes("text-gray-400").props("size=xs")
-                                ui.label(row["family"]).classes(
-                                    "text-xs bg-blue-50 dark:bg-blue-950/40 text-blue-700 "
-                                    "dark:text-blue-300 rounded px-2 py-0.5"
-                                )
-
-            if renames:
-                with ui.expansion(f"Would rename only - category's already correct ({len(renames)})").classes(
-                    "w-full"
-                ):
-                    for row in sorted(renames, key=lambda r: r["label"]):
-                        key = row["id"]
-                        with ui.row().classes("items-center gap-2"):
-                            cb = ui.checkbox(value=state["reorg_checked"].get(key, True)).props("dense")
-                            cb.on_value_change(lambda e, key=key: state["reorg_checked"].__setitem__(key, e.value))
-                            ui.label(row["label"]).classes("text-sm text-gray-400 line-through decoration-1")
-                            ui.icon("arrow_forward").classes("text-gray-400").props("size=xs")
-                            ui.label(row["canonical_label"]).classes("text-sm font-medium")
-                            ui.label(f"in {row['current_category']}").classes("text-xs text-gray-500")
-
-            if moves or renames:
-                async def apply_reorg() -> None:
-                    to_apply = [row for row in moves + renames if state["reorg_checked"].get(row["id"], True)]
-                    if not to_apply:
-                        notify("Nothing checked to apply", type="warning")
-                        return
-                    n_moves = sum(1 for r in to_apply if r.get("target_category_id") is not None)
-                    n_renames = sum(1 for r in to_apply if r["needs_rename"])
-                    parts = []
-                    if n_moves:
-                        parts.append(f"move {n_moves} tag(s) into their family categories")
-                    if n_renames:
-                        parts.append(f"rename {n_renames} tag(s) to match the taxonomy's spelling")
-                    with ui.dialog() as confirm_dialog, ui.card():
-                        ui.label(
-                            f"{' and '.join(parts).capitalize()} in Lexicon? A renamed tag's new label "
-                            f"shows everywhere it's already applied - no track's own tags change, "
-                            f"and which tracks carry the tag doesn't change either."
-                        )
-                        with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                            ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
-                            ui.button(
-                                "Apply", color="primary",
-                                on_click=lambda: confirm_dialog.submit("continue"),
-                            )
-                    if await confirm_dialog != "continue":
-                        return
-                    result = await run.io_bound(reorganize_genres.apply_moves, to_apply)
-                    msg = f"Applied {result['ok']} change(s)"
-                    if result["failures"]:
-                        names = ", ".join(f"{f['label']!r} ({f['error']})" for f in result["failures"])
-                        msg += f" - {len(result['failures'])} failed: {names}"
-                    notify(msg, type="positive" if not result["failures"] else "warning")
-                    # Re-check from Lexicon so the section reflects
-                    # what's now actually true (applied rows fall out
-                    # of "would move"/"would rename" and into "already
-                    # correct").
-                    await refresh_reorg_plan()
-
-                ui.button("Apply Checked Changes", on_click=apply_reorg).props("color=primary").classes("mt-2")
-
-        reorg_section()
+    review_section()
 
     async def generate():
         include_genre = genre_enabled_checkbox.value
@@ -1775,9 +1184,9 @@ def build_ui() -> None:
                 "Only one source right now - the local mood/theme audio model.",
             )
         # Same await-the-dialog idiom as every confirm dialog elsewhere
-        # in this file (reset_scan_progress, create_missing_categories,
-        # apply_reorg, generate's discard-unsaved-changes prompt) -
-        # dialog.open() alone (a plain sync call outside that idiom)
+        # in this file (reset_scan_progress, generate's discard-
+        # unsaved-changes prompt) - dialog.open() alone (a plain sync
+        # call outside that idiom)
         # was tried first and silently never showed anything on screen;
         # __await__ is what actually flips this dialog's value to True
         # on the frontend. No submit() call needed here since there's
