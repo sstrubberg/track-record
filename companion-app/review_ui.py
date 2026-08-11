@@ -67,10 +67,12 @@ Layout:
   sub-group, since rows are ordered by confidence within it) - still
   just a checkbox, uncheck it like any other if you disagree.
 - A "create" row (tag doesn't exist yet) also gets a category picker,
-  defaulting to that action's own new_tag_category config if resolved,
-  but always changeable here. Never pre-checked, regardless of
-  confidence - creating a tag is a bigger action than adding an
-  existing one.
+  always changeable here, never pre-checked regardless of confidence -
+  creating a tag is a bigger action than adding an existing one. For
+  Genre/Subgenre, the default tries a per-tag family match first (see
+  genre_family_hint.py) before falling back to that action's own
+  new_tag_category config; Mood/Theme has no such taxonomy, so it only
+  ever uses new_tag_category.
 - Source, per-source note, and links live behind a `⋮` overflow menu.
 - Different DJ edits of the same song (e.g. "Promiscuous (Intro
   Clean)" / "Promiscuous (Quick Hit Clean)") show up as separate

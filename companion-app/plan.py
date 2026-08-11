@@ -38,6 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import genre_family_hint
 import lexicon_client
 import scan_progress
 import scoring
@@ -92,6 +93,8 @@ def plan_track(
     weights: dict,
     suggested_category_id: int | None,
     enabled_sources: set[str] | None = None,
+    family_hints: dict[str, str] | None = None,
+    family_category_ids: dict[str, int] | None = None,
 ) -> dict:
     candidates = fetch_candidates(track, enabled_sources)
     scored = scoring.score_track(candidates, weights)
@@ -110,14 +113,23 @@ def plan_track(
             # Doesn't exist in this Lexicon library at all. Always a
             # review-screen decision, never auto - creating a tag is a
             # bigger action than adding an existing one. Which category
-            # it goes in is picked in the review UI, not here -
-            # suggested_category_id is only a pre-filled default.
+            # it goes in is picked in the review UI, not here - this is
+            # only ever a pre-filled default. A per-tag family match
+            # (e.g. "P.Funk" -> Sub-genre - Funk / Soul) wins over the
+            # flat new_tag_category default when one's available; falls
+            # back to that default otherwise (no match, ambiguous name,
+            # or the matched family has no category in Lexicon yet -
+            # see genre_family_hint.py).
+            family = (family_hints or {}).get(lexicon_client._normalize_label(entry["tag"]))
+            family_category_id = (family_category_ids or {}).get(family) if family else None
             create.append({
                 "track_id": track["id"],
                 "artist": track.get("artist"),
                 "title": track.get("title"),
                 "tag": entry["tag"],
-                "suggested_category_id": suggested_category_id,
+                "suggested_category_id": (
+                    family_category_id if family_category_id is not None else suggested_category_id
+                ),
                 "confidence": round(entry["confidence"], 3),
                 "sources": entry["sources"],
                 "low_confidence": entry["confidence"] < low_conf_threshold,
@@ -147,14 +159,16 @@ def plan_track(
     return {"auto": auto, "review": review, "create": create}
 
 
-def _resolve_suggested_category(weights: dict, on_status=None) -> int | None:
+def _resolve_suggested_category(weights: dict, categories: list[dict], on_status=None) -> int | None:
     """Purely a convenience default for the review screen's category
     dropdown - every new-tag proposal is always shown there for a
-    human decision, regardless of whether this resolves to anything."""
+    human decision, regardless of whether this resolves to anything.
+    The fallback when a tag's name doesn't match anything in
+    genre_family_hint.py's per-family lookup (or matches a family with
+    no category in Lexicon yet)."""
     name = (weights.get("new_tag_category") or "").strip()
     if not name:
         return None
-    categories = lexicon_client.fetch_categories()
     match = next((c for c in categories if c["label"].lower() == name.lower()), None)
     if match is None and on_status:
         on_status(
@@ -234,7 +248,14 @@ def generate_plan(
     by_id, by_label = lexicon_client.fetch_tag_index()
     status(f"  {len(by_id)} tags in Lexicon")
 
-    suggested_category_id = _resolve_suggested_category(weights, on_status)
+    categories = lexicon_client.fetch_categories()
+    suggested_category_id = _resolve_suggested_category(weights, categories, on_status)
+    # Per-tag family suggestion (see genre_family_hint.py's own
+    # docstring for how this differs from the removed Reorganize
+    # workflow) - built once per run, same as the flat default above,
+    # not recomputed per track.
+    family_hints = genre_family_hint.build_family_hints()
+    family_category_ids = genre_family_hint.resolve_family_category_ids(family_hints, categories)
 
     active = sorted(enabled_sources) if enabled_sources is not None else list(SOURCES)
     status(f"  sources: {', '.join(active) if active else '(none)'}")
@@ -275,7 +296,10 @@ def generate_plan(
             stopped = True
             status(f"\nstopped after {i - 1}/{len(tracks)} track(s)")
             break
-        result = plan_track(track, by_label, weights, suggested_category_id, enabled_sources)
+        result = plan_track(
+            track, by_label, weights, suggested_category_id, enabled_sources,
+            family_hints, family_category_ids,
+        )
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
         create_all.extend(result["create"])

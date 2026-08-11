@@ -1,0 +1,4078 @@
+_meta:
+  taxonomy_source: Discogs 400-style taxonomy (shared verbatim by the Discogs API/site and the discogs-maest
+    audio model)
+  reference: https://essentia.upf.edu/models.html#genre-discogs400
+  notes:
+  - canonical name is what Lexicon should display/store as the tag.
+  - source_aliases map this canonical style to that source's own label for the same concept. discogs/discogs_maest
+    are pre-filled because they use an identical taxonomy. beatport/spotify/musicbrainz are left null
+    -- fill them in as you hit real examples so you're never guessing at their exact label strings.
+  - primary is a per-track flag (not set here at the taxonomy level) for marking one subgenre as the main
+    one on a track that carries several -- see chat notes.
+  - mood/theme/energy tags are intentionally NOT in this file -- keep those as a separate taxonomy/category
+    so they can be combined independently.
+  - 'active flags (family-level and subgenre-level) control what actually ships to Track Record. Set active:
+    true on a family to browse/consider its subgenres at all; set active: true on individual subgenres
+    within an active family to include just those in the working set. Everything defaults to false --
+    nothing is assumed relevant until you say so.'
+genre_families:
+  blues:
+    canonical: Blues
+    subgenres:
+      boogie_woogie:
+        canonical: Boogie Woogie
+        source_aliases:
+          discogs: Boogie Woogie
+          discogs_maest: Boogie Woogie
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      chicago_blues:
+        canonical: Chicago Blues
+        source_aliases:
+          discogs: Chicago Blues
+          discogs_maest: Chicago Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      country_blues:
+        canonical: Country Blues
+        source_aliases:
+          discogs: Country Blues
+          discogs_maest: Country Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      delta_blues:
+        canonical: Delta Blues
+        source_aliases:
+          discogs: Delta Blues
+          discogs_maest: Delta Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      electric_blues:
+        canonical: Electric Blues
+        source_aliases:
+          discogs: Electric Blues
+          discogs_maest: Electric Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      harmonica_blues:
+        canonical: Harmonica Blues
+        source_aliases:
+          discogs: Harmonica Blues
+          discogs_maest: Harmonica Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      jump_blues:
+        canonical: Jump Blues
+        source_aliases:
+          discogs: Jump Blues
+          discogs_maest: Jump Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      louisiana_blues:
+        canonical: Louisiana Blues
+        source_aliases:
+          discogs: Louisiana Blues
+          discogs_maest: Louisiana Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      modern_electric_blues:
+        canonical: Modern Electric Blues
+        source_aliases:
+          discogs: Modern Electric Blues
+          discogs_maest: Modern Electric Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      piano_blues:
+        canonical: Piano Blues
+        source_aliases:
+          discogs: Piano Blues
+          discogs_maest: Piano Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rhythm_and_blues:
+        canonical: Rhythm & Blues
+        source_aliases:
+          discogs: Rhythm & Blues
+          discogs_maest: Rhythm & Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      texas_blues:
+        canonical: Texas Blues
+        source_aliases:
+          discogs: Texas Blues
+          discogs_maest: Texas Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  brass_and_military:
+    canonical: Brass & Military
+    subgenres:
+      brass_band:
+        canonical: Brass Band
+        source_aliases:
+          discogs: Brass Band
+          discogs_maest: Brass Band
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      marches:
+        canonical: Marches
+        source_aliases:
+          discogs: Marches
+          discogs_maest: Marches
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      military:
+        canonical: Military
+        source_aliases:
+          discogs: Military
+          discogs_maest: Military
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  children_s:
+    canonical: Children's
+    subgenres:
+      educational:
+        canonical: Educational
+        source_aliases:
+          discogs: Educational
+          discogs_maest: Educational
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      nursery_rhymes:
+        canonical: Nursery Rhymes
+        source_aliases:
+          discogs: Nursery Rhymes
+          discogs_maest: Nursery Rhymes
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      story:
+        canonical: Story
+        source_aliases:
+          discogs: Story
+          discogs_maest: Story
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  classical:
+    canonical: Classical
+    subgenres:
+      baroque:
+        canonical: Baroque
+        source_aliases:
+          discogs: Baroque
+          discogs_maest: Baroque
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      choral:
+        canonical: Choral
+        source_aliases:
+          discogs: Choral
+          discogs_maest: Choral
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      classical:
+        canonical: Classical
+        source_aliases:
+          discogs: Classical
+          discogs_maest: Classical
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      contemporary:
+        canonical: Contemporary
+        source_aliases:
+          discogs: Contemporary
+          discogs_maest: Contemporary
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      impressionist:
+        canonical: Impressionist
+        source_aliases:
+          discogs: Impressionist
+          discogs_maest: Impressionist
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      medieval:
+        canonical: Medieval
+        source_aliases:
+          discogs: Medieval
+          discogs_maest: Medieval
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      modern:
+        canonical: Modern
+        source_aliases:
+          discogs: Modern
+          discogs_maest: Modern
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      neo_classical:
+        canonical: Neo-Classical
+        source_aliases:
+          discogs: Neo-Classical
+          discogs_maest: Neo-Classical
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      neo_romantic:
+        canonical: Neo-Romantic
+        source_aliases:
+          discogs: Neo-Romantic
+          discogs_maest: Neo-Romantic
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      opera:
+        canonical: Opera
+        source_aliases:
+          discogs: Opera
+          discogs_maest: Opera
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      post_modern:
+        canonical: Post-Modern
+        source_aliases:
+          discogs: Post-Modern
+          discogs_maest: Post-Modern
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      renaissance:
+        canonical: Renaissance
+        source_aliases:
+          discogs: Renaissance
+          discogs_maest: Renaissance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      romantic:
+        canonical: Romantic
+        source_aliases:
+          discogs: Romantic
+          discogs_maest: Romantic
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  electronic:
+    canonical: Electronic
+    subgenres:
+      abstract:
+        canonical: Abstract
+        source_aliases:
+          discogs: Abstract
+          discogs_maest: Abstract
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      acid:
+        canonical: Acid
+        source_aliases:
+          discogs: Acid
+          discogs_maest: Acid
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      acid_house:
+        canonical: Acid House
+        source_aliases:
+          discogs: Acid House
+          discogs_maest: Acid House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      acid_jazz:
+        canonical: Acid Jazz
+        source_aliases:
+          discogs: Acid Jazz
+          discogs_maest: Acid Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ambient:
+        canonical: Ambient
+        source_aliases:
+          discogs: Ambient
+          discogs_maest: Ambient
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bassline:
+        canonical: Bassline
+        source_aliases:
+          discogs: Bassline
+          discogs_maest: Bassline
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      beatdown:
+        canonical: Beatdown
+        source_aliases:
+          discogs: Beatdown
+          discogs_maest: Beatdown
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      berlin_school:
+        canonical: Berlin-School
+        source_aliases:
+          discogs: Berlin-School
+          discogs_maest: Berlin-School
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      big_beat:
+        canonical: Big Beat
+        source_aliases:
+          discogs: Big Beat
+          discogs_maest: Big Beat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bleep:
+        canonical: Bleep
+        source_aliases:
+          discogs: Bleep
+          discogs_maest: Bleep
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      breakbeat:
+        canonical: Breakbeat
+        source_aliases:
+          discogs: Breakbeat
+          discogs_maest: Breakbeat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      breakcore:
+        canonical: Breakcore
+        source_aliases:
+          discogs: Breakcore
+          discogs_maest: Breakcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      breaks:
+        canonical: Breaks
+        source_aliases:
+          discogs: Breaks
+          discogs_maest: Breaks
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      broken_beat:
+        canonical: Broken Beat
+        source_aliases:
+          discogs: Broken Beat
+          discogs_maest: Broken Beat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      chillwave:
+        canonical: Chillwave
+        source_aliases:
+          discogs: Chillwave
+          discogs_maest: Chillwave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      chiptune:
+        canonical: Chiptune
+        source_aliases:
+          discogs: Chiptune
+          discogs_maest: Chiptune
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dance_pop:
+        canonical: Dance-pop
+        source_aliases:
+          discogs: Dance-pop
+          discogs_maest: Dance-pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dark_ambient:
+        canonical: Dark Ambient
+        source_aliases:
+          discogs: Dark Ambient
+          discogs_maest: Dark Ambient
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      darkwave:
+        canonical: Darkwave
+        source_aliases:
+          discogs: Darkwave
+          discogs_maest: Darkwave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      deep_house:
+        canonical: Deep House
+        source_aliases:
+          discogs: Deep House
+          discogs_maest: Deep House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      deep_techno:
+        canonical: Deep Techno
+        source_aliases:
+          discogs: Deep Techno
+          discogs_maest: Deep Techno
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      disco:
+        canonical: Disco
+        source_aliases:
+          discogs: Disco
+          discogs_maest: Disco
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      disco_polo:
+        canonical: Disco Polo
+        source_aliases:
+          discogs: Disco Polo
+          discogs_maest: Disco Polo
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      donk:
+        canonical: Donk
+        source_aliases:
+          discogs: Donk
+          discogs_maest: Donk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      downtempo:
+        canonical: Downtempo
+        source_aliases:
+          discogs: Downtempo
+          discogs_maest: Downtempo
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      drone:
+        canonical: Drone
+        source_aliases:
+          discogs: Drone
+          discogs_maest: Drone
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      drum_n_bass:
+        canonical: Drum n Bass
+        source_aliases:
+          discogs: Drum n Bass
+          discogs_maest: Drum n Bass
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dub:
+        canonical: Dub
+        source_aliases:
+          discogs: Dub
+          discogs_maest: Dub
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dub_techno:
+        canonical: Dub Techno
+        source_aliases:
+          discogs: Dub Techno
+          discogs_maest: Dub Techno
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dubstep:
+        canonical: Dubstep
+        source_aliases:
+          discogs: Dubstep
+          discogs_maest: Dubstep
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dungeon_synth:
+        canonical: Dungeon Synth
+        source_aliases:
+          discogs: Dungeon Synth
+          discogs_maest: Dungeon Synth
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ebm:
+        canonical: EBM
+        source_aliases:
+          discogs: EBM
+          discogs_maest: EBM
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      electro:
+        canonical: Electro
+        source_aliases:
+          discogs: Electro
+          discogs_maest: Electro
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      electro_house:
+        canonical: Electro House
+        source_aliases:
+          discogs: Electro House
+          discogs_maest: Electro House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      electroclash:
+        canonical: Electroclash
+        source_aliases:
+          discogs: Electroclash
+          discogs_maest: Electroclash
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      euro_house:
+        canonical: Euro House
+        source_aliases:
+          discogs: Euro House
+          discogs_maest: Euro House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      euro_disco:
+        canonical: Euro-Disco
+        source_aliases:
+          discogs: Euro-Disco
+          discogs_maest: Euro-Disco
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      eurobeat:
+        canonical: Eurobeat
+        source_aliases:
+          discogs: Eurobeat
+          discogs_maest: Eurobeat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      eurodance:
+        canonical: Eurodance
+        source_aliases:
+          discogs: Eurodance
+          discogs_maest: Eurodance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      experimental:
+        canonical: Experimental
+        source_aliases:
+          discogs: Experimental
+          discogs_maest: Experimental
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      freestyle:
+        canonical: Freestyle
+        source_aliases:
+          discogs: Freestyle
+          discogs_maest: Freestyle
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      future_jazz:
+        canonical: Future Jazz
+        source_aliases:
+          discogs: Future Jazz
+          discogs_maest: Future Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      gabber:
+        canonical: Gabber
+        source_aliases:
+          discogs: Gabber
+          discogs_maest: Gabber
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      garage_house:
+        canonical: Garage House
+        source_aliases:
+          discogs: Garage House
+          discogs_maest: Garage House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ghetto:
+        canonical: Ghetto
+        source_aliases:
+          discogs: Ghetto
+          discogs_maest: Ghetto
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ghetto_house:
+        canonical: Ghetto House
+        source_aliases:
+          discogs: Ghetto House
+          discogs_maest: Ghetto House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      glitch:
+        canonical: Glitch
+        source_aliases:
+          discogs: Glitch
+          discogs_maest: Glitch
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      goa_trance:
+        canonical: Goa Trance
+        source_aliases:
+          discogs: Goa Trance
+          discogs_maest: Goa Trance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      grime:
+        canonical: Grime
+        source_aliases:
+          discogs: Grime
+          discogs_maest: Grime
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      halftime:
+        canonical: Halftime
+        source_aliases:
+          discogs: Halftime
+          discogs_maest: Halftime
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hands_up:
+        canonical: Hands Up
+        source_aliases:
+          discogs: Hands Up
+          discogs_maest: Hands Up
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      happy_hardcore:
+        canonical: Happy Hardcore
+        source_aliases:
+          discogs: Happy Hardcore
+          discogs_maest: Happy Hardcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hard_house:
+        canonical: Hard House
+        source_aliases:
+          discogs: Hard House
+          discogs_maest: Hard House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hard_techno:
+        canonical: Hard Techno
+        source_aliases:
+          discogs: Hard Techno
+          discogs_maest: Hard Techno
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hard_trance:
+        canonical: Hard Trance
+        source_aliases:
+          discogs: Hard Trance
+          discogs_maest: Hard Trance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hardcore:
+        canonical: Hardcore
+        source_aliases:
+          discogs: Hardcore
+          discogs_maest: Hardcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hardstyle:
+        canonical: Hardstyle
+        source_aliases:
+          discogs: Hardstyle
+          discogs_maest: Hardstyle
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hi_nrg:
+        canonical: Hi NRG
+        source_aliases:
+          discogs: Hi NRG
+          discogs_maest: Hi NRG
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hip_hop:
+        canonical: Hip Hop
+        source_aliases:
+          discogs: Hip Hop
+          discogs_maest: Hip Hop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hip_house:
+        canonical: Hip-House
+        source_aliases:
+          discogs: Hip-House
+          discogs_maest: Hip-House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      house:
+        canonical: House
+        source_aliases:
+          discogs: House
+          discogs_maest: House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      idm:
+        canonical: IDM
+        source_aliases:
+          discogs: IDM
+          discogs_maest: IDM
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      illbient:
+        canonical: Illbient
+        source_aliases:
+          discogs: Illbient
+          discogs_maest: Illbient
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      industrial:
+        canonical: Industrial
+        source_aliases:
+          discogs: Industrial
+          discogs_maest: Industrial
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      italo_house:
+        canonical: Italo House
+        source_aliases:
+          discogs: Italo House
+          discogs_maest: Italo House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      italo_disco:
+        canonical: Italo-Disco
+        source_aliases:
+          discogs: Italo-Disco
+          discogs_maest: Italo-Disco
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      italodance:
+        canonical: Italodance
+        source_aliases:
+          discogs: Italodance
+          discogs_maest: Italodance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      jazzdance:
+        canonical: Jazzdance
+        source_aliases:
+          discogs: Jazzdance
+          discogs_maest: Jazzdance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      juke:
+        canonical: Juke
+        source_aliases:
+          discogs: Juke
+          discogs_maest: Juke
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      jumpstyle:
+        canonical: Jumpstyle
+        source_aliases:
+          discogs: Jumpstyle
+          discogs_maest: Jumpstyle
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      jungle:
+        canonical: Jungle
+        source_aliases:
+          discogs: Jungle
+          discogs_maest: Jungle
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      latin:
+        canonical: Latin
+        source_aliases:
+          discogs: Latin
+          discogs_maest: Latin
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      leftfield:
+        canonical: Leftfield
+        source_aliases:
+          discogs: Leftfield
+          discogs_maest: Leftfield
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      makina:
+        canonical: Makina
+        source_aliases:
+          discogs: Makina
+          discogs_maest: Makina
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      minimal:
+        canonical: Minimal
+        source_aliases:
+          discogs: Minimal
+          discogs_maest: Minimal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      minimal_techno:
+        canonical: Minimal Techno
+        source_aliases:
+          discogs: Minimal Techno
+          discogs_maest: Minimal Techno
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      modern_classical:
+        canonical: Modern Classical
+        source_aliases:
+          discogs: Modern Classical
+          discogs_maest: Modern Classical
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      musique_concr_te:
+        canonical: Musique Concrète
+        source_aliases:
+          discogs: Musique Concrète
+          discogs_maest: Musique Concrète
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      neofolk:
+        canonical: Neofolk
+        source_aliases:
+          discogs: Neofolk
+          discogs_maest: Neofolk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      new_age:
+        canonical: New Age
+        source_aliases:
+          discogs: New Age
+          discogs_maest: New Age
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      new_beat:
+        canonical: New Beat
+        source_aliases:
+          discogs: New Beat
+          discogs_maest: New Beat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      new_wave:
+        canonical: New Wave
+        source_aliases:
+          discogs: New Wave
+          discogs_maest: New Wave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      noise:
+        canonical: Noise
+        source_aliases:
+          discogs: Noise
+          discogs_maest: Noise
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      nu_disco:
+        canonical: Nu-Disco
+        source_aliases:
+          discogs: Nu-Disco
+          discogs_maest: Nu-Disco
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      power_electronics:
+        canonical: Power Electronics
+        source_aliases:
+          discogs: Power Electronics
+          discogs_maest: Power Electronics
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      progressive_breaks:
+        canonical: Progressive Breaks
+        source_aliases:
+          discogs: Progressive Breaks
+          discogs_maest: Progressive Breaks
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      progressive_house:
+        canonical: Progressive House
+        source_aliases:
+          discogs: Progressive House
+          discogs_maest: Progressive House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      progressive_trance:
+        canonical: Progressive Trance
+        source_aliases:
+          discogs: Progressive Trance
+          discogs_maest: Progressive Trance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      psy_trance:
+        canonical: Psy-Trance
+        source_aliases:
+          discogs: Psy-Trance
+          discogs_maest: Psy-Trance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rhythmic_noise:
+        canonical: Rhythmic Noise
+        source_aliases:
+          discogs: Rhythmic Noise
+          discogs_maest: Rhythmic Noise
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      schranz:
+        canonical: Schranz
+        source_aliases:
+          discogs: Schranz
+          discogs_maest: Schranz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      sound_collage:
+        canonical: Sound Collage
+        source_aliases:
+          discogs: Sound Collage
+          discogs_maest: Sound Collage
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      speed_garage:
+        canonical: Speed Garage
+        source_aliases:
+          discogs: Speed Garage
+          discogs_maest: Speed Garage
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      speedcore:
+        canonical: Speedcore
+        source_aliases:
+          discogs: Speedcore
+          discogs_maest: Speedcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      synth_pop:
+        canonical: Synth-pop
+        source_aliases:
+          discogs: Synth-pop
+          discogs_maest: Synth-pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      synthwave:
+        canonical: Synthwave
+        source_aliases:
+          discogs: Synthwave
+          discogs_maest: Synthwave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      tech_house:
+        canonical: Tech House
+        source_aliases:
+          discogs: Tech House
+          discogs_maest: Tech House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      tech_trance:
+        canonical: Tech Trance
+        source_aliases:
+          discogs: Tech Trance
+          discogs_maest: Tech Trance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      techno:
+        canonical: Techno
+        source_aliases:
+          discogs: Techno
+          discogs_maest: Techno
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      trance:
+        canonical: Trance
+        source_aliases:
+          discogs: Trance
+          discogs_maest: Trance
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      tribal:
+        canonical: Tribal
+        source_aliases:
+          discogs: Tribal
+          discogs_maest: Tribal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      tribal_house:
+        canonical: Tribal House
+        source_aliases:
+          discogs: Tribal House
+          discogs_maest: Tribal House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      trip_hop:
+        canonical: Trip Hop
+        source_aliases:
+          discogs: Trip Hop
+          discogs_maest: Trip Hop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      tropical_house:
+        canonical: Tropical House
+        source_aliases:
+          discogs: Tropical House
+          discogs_maest: Tropical House
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      uk_garage:
+        canonical: UK Garage
+        source_aliases:
+          discogs: UK Garage
+          discogs_maest: UK Garage
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      vaporwave:
+        canonical: Vaporwave
+        source_aliases:
+          discogs: Vaporwave
+          discogs_maest: Vaporwave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  folk_world_and_country:
+    canonical: Folk, World, & Country
+    subgenres:
+      african:
+        canonical: African
+        source_aliases:
+          discogs: African
+          discogs_maest: African
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bluegrass:
+        canonical: Bluegrass
+        source_aliases:
+          discogs: Bluegrass
+          discogs_maest: Bluegrass
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      cajun:
+        canonical: Cajun
+        source_aliases:
+          discogs: Cajun
+          discogs_maest: Cajun
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      canzone_napoletana:
+        canonical: Canzone Napoletana
+        source_aliases:
+          discogs: Canzone Napoletana
+          discogs_maest: Canzone Napoletana
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      catalan_music:
+        canonical: Catalan Music
+        source_aliases:
+          discogs: Catalan Music
+          discogs_maest: Catalan Music
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      celtic:
+        canonical: Celtic
+        source_aliases:
+          discogs: Celtic
+          discogs_maest: Celtic
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      country:
+        canonical: Country
+        source_aliases:
+          discogs: Country
+          discogs_maest: Country
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      fado:
+        canonical: Fado
+        source_aliases:
+          discogs: Fado
+          discogs_maest: Fado
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      flamenco:
+        canonical: Flamenco
+        source_aliases:
+          discogs: Flamenco
+          discogs_maest: Flamenco
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      folk:
+        canonical: Folk
+        source_aliases:
+          discogs: Folk
+          discogs_maest: Folk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      gospel:
+        canonical: Gospel
+        source_aliases:
+          discogs: Gospel
+          discogs_maest: Gospel
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      highlife:
+        canonical: Highlife
+        source_aliases:
+          discogs: Highlife
+          discogs_maest: Highlife
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hillbilly:
+        canonical: Hillbilly
+        source_aliases:
+          discogs: Hillbilly
+          discogs_maest: Hillbilly
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hindustani:
+        canonical: Hindustani
+        source_aliases:
+          discogs: Hindustani
+          discogs_maest: Hindustani
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      honky_tonk:
+        canonical: Honky Tonk
+        source_aliases:
+          discogs: Honky Tonk
+          discogs_maest: Honky Tonk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      indian_classical:
+        canonical: Indian Classical
+        source_aliases:
+          discogs: Indian Classical
+          discogs_maest: Indian Classical
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      la_k:
+        canonical: Laïkó
+        source_aliases:
+          discogs: Laïkó
+          discogs_maest: Laïkó
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      nordic:
+        canonical: Nordic
+        source_aliases:
+          discogs: Nordic
+          discogs_maest: Nordic
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      pacific:
+        canonical: Pacific
+        source_aliases:
+          discogs: Pacific
+          discogs_maest: Pacific
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      polka:
+        canonical: Polka
+        source_aliases:
+          discogs: Polka
+          discogs_maest: Polka
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ra:
+        canonical: Raï
+        source_aliases:
+          discogs: Raï
+          discogs_maest: Raï
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      romani:
+        canonical: Romani
+        source_aliases:
+          discogs: Romani
+          discogs_maest: Romani
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      soukous:
+        canonical: Soukous
+        source_aliases:
+          discogs: Soukous
+          discogs_maest: Soukous
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      s_ga:
+        canonical: Séga
+        source_aliases:
+          discogs: Séga
+          discogs_maest: Séga
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      volksmusik:
+        canonical: Volksmusik
+        source_aliases:
+          discogs: Volksmusik
+          discogs_maest: Volksmusik
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      zouk:
+        canonical: Zouk
+        source_aliases:
+          discogs: Zouk
+          discogs_maest: Zouk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ntekhno:
+        canonical: Éntekhno
+        source_aliases:
+          discogs: Éntekhno
+          discogs_maest: Éntekhno
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  funk_soul:
+    canonical: Funk / Soul
+    subgenres:
+      afrobeat:
+        canonical: Afrobeat
+        source_aliases:
+          discogs: Afrobeat
+          discogs_maest: Afrobeat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      boogie:
+        canonical: Boogie
+        source_aliases:
+          discogs: Boogie
+          discogs_maest: Boogie
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      contemporary_randb:
+        canonical: Contemporary R&B
+        source_aliases:
+          discogs: Contemporary R&B
+          discogs_maest: Contemporary R&B
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      disco:
+        canonical: Disco
+        source_aliases:
+          discogs: Disco
+          discogs_maest: Disco
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      free_funk:
+        canonical: Free Funk
+        source_aliases:
+          discogs: Free Funk
+          discogs_maest: Free Funk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      funk:
+        canonical: Funk
+        source_aliases:
+          discogs: Funk
+          discogs_maest: Funk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      gospel:
+        canonical: Gospel
+        source_aliases:
+          discogs: Gospel
+          discogs_maest: Gospel
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      neo_soul:
+        canonical: Neo Soul
+        source_aliases:
+          discogs: Neo Soul
+          discogs_maest: Neo Soul
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      new_jack_swing:
+        canonical: New Jack Swing
+        source_aliases:
+          discogs: New Jack Swing
+          discogs_maest: New Jack Swing
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      p_funk:
+        canonical: P.Funk
+        source_aliases:
+          discogs: P.Funk
+          discogs_maest: P.Funk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      psychedelic:
+        canonical: Psychedelic
+        source_aliases:
+          discogs: Psychedelic
+          discogs_maest: Psychedelic
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rhythm_and_blues:
+        canonical: Rhythm & Blues
+        source_aliases:
+          discogs: Rhythm & Blues
+          discogs_maest: Rhythm & Blues
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      soul:
+        canonical: Soul
+        source_aliases:
+          discogs: Soul
+          discogs_maest: Soul
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      swingbeat:
+        canonical: Swingbeat
+        source_aliases:
+          discogs: Swingbeat
+          discogs_maest: Swingbeat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      uk_street_soul:
+        canonical: UK Street Soul
+        source_aliases:
+          discogs: UK Street Soul
+          discogs_maest: UK Street Soul
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  hip_hop:
+    canonical: Hip Hop
+    subgenres:
+      bass_music:
+        canonical: Bass Music
+        source_aliases:
+          discogs: Bass Music
+          discogs_maest: Bass Music
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      boom_bap:
+        canonical: Boom Bap
+        source_aliases:
+          discogs: Boom Bap
+          discogs_maest: Boom Bap
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bounce:
+        canonical: Bounce
+        source_aliases:
+          discogs: Bounce
+          discogs_maest: Bounce
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      britcore:
+        canonical: Britcore
+        source_aliases:
+          discogs: Britcore
+          discogs_maest: Britcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      cloud_rap:
+        canonical: Cloud Rap
+        source_aliases:
+          discogs: Cloud Rap
+          discogs_maest: Cloud Rap
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      conscious:
+        canonical: Conscious
+        source_aliases:
+          discogs: Conscious
+          discogs_maest: Conscious
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      crunk:
+        canonical: Crunk
+        source_aliases:
+          discogs: Crunk
+          discogs_maest: Crunk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      cut_up_dj:
+        canonical: Cut-up/DJ
+        source_aliases:
+          discogs: Cut-up/DJ
+          discogs_maest: Cut-up/DJ
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dj_battle_tool:
+        canonical: DJ Battle Tool
+        source_aliases:
+          discogs: DJ Battle Tool
+          discogs_maest: DJ Battle Tool
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      electro:
+        canonical: Electro
+        source_aliases:
+          discogs: Electro
+          discogs_maest: Electro
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      g_funk:
+        canonical: G-Funk
+        source_aliases:
+          discogs: G-Funk
+          discogs_maest: G-Funk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      gangsta:
+        canonical: Gangsta
+        source_aliases:
+          discogs: Gangsta
+          discogs_maest: Gangsta
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      grime:
+        canonical: Grime
+        source_aliases:
+          discogs: Grime
+          discogs_maest: Grime
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hardcore_hip_hop:
+        canonical: Hardcore Hip-Hop
+        source_aliases:
+          discogs: Hardcore Hip-Hop
+          discogs_maest: Hardcore Hip-Hop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      horrorcore:
+        canonical: Horrorcore
+        source_aliases:
+          discogs: Horrorcore
+          discogs_maest: Horrorcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      instrumental:
+        canonical: Instrumental
+        source_aliases:
+          discogs: Instrumental
+          discogs_maest: Instrumental
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      jazzy_hip_hop:
+        canonical: Jazzy Hip-Hop
+        source_aliases:
+          discogs: Jazzy Hip-Hop
+          discogs_maest: Jazzy Hip-Hop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      miami_bass:
+        canonical: Miami Bass
+        source_aliases:
+          discogs: Miami Bass
+          discogs_maest: Miami Bass
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      pop_rap:
+        canonical: Pop Rap
+        source_aliases:
+          discogs: Pop Rap
+          discogs_maest: Pop Rap
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ragga_hiphop:
+        canonical: Ragga HipHop
+        source_aliases:
+          discogs: Ragga HipHop
+          discogs_maest: Ragga HipHop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rnb_swing:
+        canonical: RnB/Swing
+        source_aliases:
+          discogs: RnB/Swing
+          discogs_maest: RnB/Swing
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      screw:
+        canonical: Screw
+        source_aliases:
+          discogs: Screw
+          discogs_maest: Screw
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      thug_rap:
+        canonical: Thug Rap
+        source_aliases:
+          discogs: Thug Rap
+          discogs_maest: Thug Rap
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      trap:
+        canonical: Trap
+        source_aliases:
+          discogs: Trap
+          discogs_maest: Trap
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      trip_hop:
+        canonical: Trip Hop
+        source_aliases:
+          discogs: Trip Hop
+          discogs_maest: Trip Hop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      turntablism:
+        canonical: Turntablism
+        source_aliases:
+          discogs: Turntablism
+          discogs_maest: Turntablism
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  jazz:
+    canonical: Jazz
+    subgenres:
+      afro_cuban_jazz:
+        canonical: Afro-Cuban Jazz
+        source_aliases:
+          discogs: Afro-Cuban Jazz
+          discogs_maest: Afro-Cuban Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      afrobeat:
+        canonical: Afrobeat
+        source_aliases:
+          discogs: Afrobeat
+          discogs_maest: Afrobeat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      avant_garde_jazz:
+        canonical: Avant-garde Jazz
+        source_aliases:
+          discogs: Avant-garde Jazz
+          discogs_maest: Avant-garde Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      big_band:
+        canonical: Big Band
+        source_aliases:
+          discogs: Big Band
+          discogs_maest: Big Band
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bop:
+        canonical: Bop
+        source_aliases:
+          discogs: Bop
+          discogs_maest: Bop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bossa_nova:
+        canonical: Bossa Nova
+        source_aliases:
+          discogs: Bossa Nova
+          discogs_maest: Bossa Nova
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      contemporary_jazz:
+        canonical: Contemporary Jazz
+        source_aliases:
+          discogs: Contemporary Jazz
+          discogs_maest: Contemporary Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      cool_jazz:
+        canonical: Cool Jazz
+        source_aliases:
+          discogs: Cool Jazz
+          discogs_maest: Cool Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dixieland:
+        canonical: Dixieland
+        source_aliases:
+          discogs: Dixieland
+          discogs_maest: Dixieland
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      easy_listening:
+        canonical: Easy Listening
+        source_aliases:
+          discogs: Easy Listening
+          discogs_maest: Easy Listening
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      free_improvisation:
+        canonical: Free Improvisation
+        source_aliases:
+          discogs: Free Improvisation
+          discogs_maest: Free Improvisation
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      free_jazz:
+        canonical: Free Jazz
+        source_aliases:
+          discogs: Free Jazz
+          discogs_maest: Free Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      fusion:
+        canonical: Fusion
+        source_aliases:
+          discogs: Fusion
+          discogs_maest: Fusion
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      gypsy_jazz:
+        canonical: Gypsy Jazz
+        source_aliases:
+          discogs: Gypsy Jazz
+          discogs_maest: Gypsy Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hard_bop:
+        canonical: Hard Bop
+        source_aliases:
+          discogs: Hard Bop
+          discogs_maest: Hard Bop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      jazz_funk:
+        canonical: Jazz-Funk
+        source_aliases:
+          discogs: Jazz-Funk
+          discogs_maest: Jazz-Funk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      jazz_rock:
+        canonical: Jazz-Rock
+        source_aliases:
+          discogs: Jazz-Rock
+          discogs_maest: Jazz-Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      latin_jazz:
+        canonical: Latin Jazz
+        source_aliases:
+          discogs: Latin Jazz
+          discogs_maest: Latin Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      modal:
+        canonical: Modal
+        source_aliases:
+          discogs: Modal
+          discogs_maest: Modal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      post_bop:
+        canonical: Post Bop
+        source_aliases:
+          discogs: Post Bop
+          discogs_maest: Post Bop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ragtime:
+        canonical: Ragtime
+        source_aliases:
+          discogs: Ragtime
+          discogs_maest: Ragtime
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      smooth_jazz:
+        canonical: Smooth Jazz
+        source_aliases:
+          discogs: Smooth Jazz
+          discogs_maest: Smooth Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      soul_jazz:
+        canonical: Soul-Jazz
+        source_aliases:
+          discogs: Soul-Jazz
+          discogs_maest: Soul-Jazz
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      space_age:
+        canonical: Space-Age
+        source_aliases:
+          discogs: Space-Age
+          discogs_maest: Space-Age
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      swing:
+        canonical: Swing
+        source_aliases:
+          discogs: Swing
+          discogs_maest: Swing
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  latin:
+    canonical: Latin
+    subgenres:
+      afro_cuban:
+        canonical: Afro-Cuban
+        source_aliases:
+          discogs: Afro-Cuban
+          discogs_maest: Afro-Cuban
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bai_o:
+        canonical: Baião
+        source_aliases:
+          discogs: Baião
+          discogs_maest: Baião
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      batucada:
+        canonical: Batucada
+        source_aliases:
+          discogs: Batucada
+          discogs_maest: Batucada
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      beguine:
+        canonical: Beguine
+        source_aliases:
+          discogs: Beguine
+          discogs_maest: Beguine
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bolero:
+        canonical: Bolero
+        source_aliases:
+          discogs: Bolero
+          discogs_maest: Bolero
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      boogaloo:
+        canonical: Boogaloo
+        source_aliases:
+          discogs: Boogaloo
+          discogs_maest: Boogaloo
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bossanova:
+        canonical: Bossanova
+        source_aliases:
+          discogs: Bossanova
+          discogs_maest: Bossanova
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      cha_cha:
+        canonical: Cha-Cha
+        source_aliases:
+          discogs: Cha-Cha
+          discogs_maest: Cha-Cha
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      charanga:
+        canonical: Charanga
+        source_aliases:
+          discogs: Charanga
+          discogs_maest: Charanga
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      compas:
+        canonical: Compas
+        source_aliases:
+          discogs: Compas
+          discogs_maest: Compas
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      cubano:
+        canonical: Cubano
+        source_aliases:
+          discogs: Cubano
+          discogs_maest: Cubano
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      cumbia:
+        canonical: Cumbia
+        source_aliases:
+          discogs: Cumbia
+          discogs_maest: Cumbia
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      descarga:
+        canonical: Descarga
+        source_aliases:
+          discogs: Descarga
+          discogs_maest: Descarga
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      forr:
+        canonical: Forró
+        source_aliases:
+          discogs: Forró
+          discogs_maest: Forró
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      guaguanc:
+        canonical: Guaguancó
+        source_aliases:
+          discogs: Guaguancó
+          discogs_maest: Guaguancó
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      guajira:
+        canonical: Guajira
+        source_aliases:
+          discogs: Guajira
+          discogs_maest: Guajira
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      guaracha:
+        canonical: Guaracha
+        source_aliases:
+          discogs: Guaracha
+          discogs_maest: Guaracha
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      mpb:
+        canonical: MPB
+        source_aliases:
+          discogs: MPB
+          discogs_maest: MPB
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      mambo:
+        canonical: Mambo
+        source_aliases:
+          discogs: Mambo
+          discogs_maest: Mambo
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      mariachi:
+        canonical: Mariachi
+        source_aliases:
+          discogs: Mariachi
+          discogs_maest: Mariachi
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      merengue:
+        canonical: Merengue
+        source_aliases:
+          discogs: Merengue
+          discogs_maest: Merengue
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      norte_o:
+        canonical: Norteño
+        source_aliases:
+          discogs: Norteño
+          discogs_maest: Norteño
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      nueva_cancion:
+        canonical: Nueva Cancion
+        source_aliases:
+          discogs: Nueva Cancion
+          discogs_maest: Nueva Cancion
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      pachanga:
+        canonical: Pachanga
+        source_aliases:
+          discogs: Pachanga
+          discogs_maest: Pachanga
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      porro:
+        canonical: Porro
+        source_aliases:
+          discogs: Porro
+          discogs_maest: Porro
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ranchera:
+        canonical: Ranchera
+        source_aliases:
+          discogs: Ranchera
+          discogs_maest: Ranchera
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      reggaeton:
+        canonical: Reggaeton
+        source_aliases:
+          discogs: Reggaeton
+          discogs_maest: Reggaeton
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rumba:
+        canonical: Rumba
+        source_aliases:
+          discogs: Rumba
+          discogs_maest: Rumba
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      salsa:
+        canonical: Salsa
+        source_aliases:
+          discogs: Salsa
+          discogs_maest: Salsa
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      samba:
+        canonical: Samba
+        source_aliases:
+          discogs: Samba
+          discogs_maest: Samba
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      son:
+        canonical: Son
+        source_aliases:
+          discogs: Son
+          discogs_maest: Son
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      son_montuno:
+        canonical: Son Montuno
+        source_aliases:
+          discogs: Son Montuno
+          discogs_maest: Son Montuno
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      tango:
+        canonical: Tango
+        source_aliases:
+          discogs: Tango
+          discogs_maest: Tango
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      tejano:
+        canonical: Tejano
+        source_aliases:
+          discogs: Tejano
+          discogs_maest: Tejano
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      vallenato:
+        canonical: Vallenato
+        source_aliases:
+          discogs: Vallenato
+          discogs_maest: Vallenato
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  non_music:
+    canonical: Non-Music
+    subgenres:
+      audiobook:
+        canonical: Audiobook
+        source_aliases:
+          discogs: Audiobook
+          discogs_maest: Audiobook
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      comedy:
+        canonical: Comedy
+        source_aliases:
+          discogs: Comedy
+          discogs_maest: Comedy
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dialogue:
+        canonical: Dialogue
+        source_aliases:
+          discogs: Dialogue
+          discogs_maest: Dialogue
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      education:
+        canonical: Education
+        source_aliases:
+          discogs: Education
+          discogs_maest: Education
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      field_recording:
+        canonical: Field Recording
+        source_aliases:
+          discogs: Field Recording
+          discogs_maest: Field Recording
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      interview:
+        canonical: Interview
+        source_aliases:
+          discogs: Interview
+          discogs_maest: Interview
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      monolog:
+        canonical: Monolog
+        source_aliases:
+          discogs: Monolog
+          discogs_maest: Monolog
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      poetry:
+        canonical: Poetry
+        source_aliases:
+          discogs: Poetry
+          discogs_maest: Poetry
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      political:
+        canonical: Political
+        source_aliases:
+          discogs: Political
+          discogs_maest: Political
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      promotional:
+        canonical: Promotional
+        source_aliases:
+          discogs: Promotional
+          discogs_maest: Promotional
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      radioplay:
+        canonical: Radioplay
+        source_aliases:
+          discogs: Radioplay
+          discogs_maest: Radioplay
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      religious:
+        canonical: Religious
+        source_aliases:
+          discogs: Religious
+          discogs_maest: Religious
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      spoken_word:
+        canonical: Spoken Word
+        source_aliases:
+          discogs: Spoken Word
+          discogs_maest: Spoken Word
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  pop:
+    canonical: Pop
+    subgenres:
+      ballad:
+        canonical: Ballad
+        source_aliases:
+          discogs: Ballad
+          discogs_maest: Ballad
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bollywood:
+        canonical: Bollywood
+        source_aliases:
+          discogs: Bollywood
+          discogs_maest: Bollywood
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      bubblegum:
+        canonical: Bubblegum
+        source_aliases:
+          discogs: Bubblegum
+          discogs_maest: Bubblegum
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      chanson:
+        canonical: Chanson
+        source_aliases:
+          discogs: Chanson
+          discogs_maest: Chanson
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      city_pop:
+        canonical: City Pop
+        source_aliases:
+          discogs: City Pop
+          discogs_maest: City Pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      europop:
+        canonical: Europop
+        source_aliases:
+          discogs: Europop
+          discogs_maest: Europop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      indie_pop:
+        canonical: Indie Pop
+        source_aliases:
+          discogs: Indie Pop
+          discogs_maest: Indie Pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      j_pop:
+        canonical: J-pop
+        source_aliases:
+          discogs: J-pop
+          discogs_maest: J-pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      k_pop:
+        canonical: K-pop
+        source_aliases:
+          discogs: K-pop
+          discogs_maest: K-pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      kay_kyoku:
+        canonical: Kayōkyoku
+        source_aliases:
+          discogs: Kayōkyoku
+          discogs_maest: Kayōkyoku
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      light_music:
+        canonical: Light Music
+        source_aliases:
+          discogs: Light Music
+          discogs_maest: Light Music
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      music_hall:
+        canonical: Music Hall
+        source_aliases:
+          discogs: Music Hall
+          discogs_maest: Music Hall
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      novelty:
+        canonical: Novelty
+        source_aliases:
+          discogs: Novelty
+          discogs_maest: Novelty
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      parody:
+        canonical: Parody
+        source_aliases:
+          discogs: Parody
+          discogs_maest: Parody
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      schlager:
+        canonical: Schlager
+        source_aliases:
+          discogs: Schlager
+          discogs_maest: Schlager
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      vocal:
+        canonical: Vocal
+        source_aliases:
+          discogs: Vocal
+          discogs_maest: Vocal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  reggae:
+    canonical: Reggae
+    subgenres:
+      calypso:
+        canonical: Calypso
+        source_aliases:
+          discogs: Calypso
+          discogs_maest: Calypso
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dancehall:
+        canonical: Dancehall
+        source_aliases:
+          discogs: Dancehall
+          discogs_maest: Dancehall
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dub:
+        canonical: Dub
+        source_aliases:
+          discogs: Dub
+          discogs_maest: Dub
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      lovers_rock:
+        canonical: Lovers Rock
+        source_aliases:
+          discogs: Lovers Rock
+          discogs_maest: Lovers Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ragga:
+        canonical: Ragga
+        source_aliases:
+          discogs: Ragga
+          discogs_maest: Ragga
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      reggae:
+        canonical: Reggae
+        source_aliases:
+          discogs: Reggae
+          discogs_maest: Reggae
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      reggae_pop:
+        canonical: Reggae-Pop
+        source_aliases:
+          discogs: Reggae-Pop
+          discogs_maest: Reggae-Pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rocksteady:
+        canonical: Rocksteady
+        source_aliases:
+          discogs: Rocksteady
+          discogs_maest: Rocksteady
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      roots_reggae:
+        canonical: Roots Reggae
+        source_aliases:
+          discogs: Roots Reggae
+          discogs_maest: Roots Reggae
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ska:
+        canonical: Ska
+        source_aliases:
+          discogs: Ska
+          discogs_maest: Ska
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      soca:
+        canonical: Soca
+        source_aliases:
+          discogs: Soca
+          discogs_maest: Soca
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  rock:
+    canonical: Rock
+    subgenres:
+      aor:
+        canonical: AOR
+        source_aliases:
+          discogs: AOR
+          discogs_maest: AOR
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      acid_rock:
+        canonical: Acid Rock
+        source_aliases:
+          discogs: Acid Rock
+          discogs_maest: Acid Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      acoustic:
+        canonical: Acoustic
+        source_aliases:
+          discogs: Acoustic
+          discogs_maest: Acoustic
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      alternative_rock:
+        canonical: Alternative Rock
+        source_aliases:
+          discogs: Alternative Rock
+          discogs_maest: Alternative Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      arena_rock:
+        canonical: Arena Rock
+        source_aliases:
+          discogs: Arena Rock
+          discogs_maest: Arena Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      art_rock:
+        canonical: Art Rock
+        source_aliases:
+          discogs: Art Rock
+          discogs_maest: Art Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      atmospheric_black_metal:
+        canonical: Atmospheric Black Metal
+        source_aliases:
+          discogs: Atmospheric Black Metal
+          discogs_maest: Atmospheric Black Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      avantgarde:
+        canonical: Avantgarde
+        source_aliases:
+          discogs: Avantgarde
+          discogs_maest: Avantgarde
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      beat:
+        canonical: Beat
+        source_aliases:
+          discogs: Beat
+          discogs_maest: Beat
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      black_metal:
+        canonical: Black Metal
+        source_aliases:
+          discogs: Black Metal
+          discogs_maest: Black Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      blues_rock:
+        canonical: Blues Rock
+        source_aliases:
+          discogs: Blues Rock
+          discogs_maest: Blues Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      brit_pop:
+        canonical: Brit Pop
+        source_aliases:
+          discogs: Brit Pop
+          discogs_maest: Brit Pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      classic_rock:
+        canonical: Classic Rock
+        source_aliases:
+          discogs: Classic Rock
+          discogs_maest: Classic Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      coldwave:
+        canonical: Coldwave
+        source_aliases:
+          discogs: Coldwave
+          discogs_maest: Coldwave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      country_rock:
+        canonical: Country Rock
+        source_aliases:
+          discogs: Country Rock
+          discogs_maest: Country Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      crust:
+        canonical: Crust
+        source_aliases:
+          discogs: Crust
+          discogs_maest: Crust
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      death_metal:
+        canonical: Death Metal
+        source_aliases:
+          discogs: Death Metal
+          discogs_maest: Death Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      deathcore:
+        canonical: Deathcore
+        source_aliases:
+          discogs: Deathcore
+          discogs_maest: Deathcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      deathrock:
+        canonical: Deathrock
+        source_aliases:
+          discogs: Deathrock
+          discogs_maest: Deathrock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      depressive_black_metal:
+        canonical: Depressive Black Metal
+        source_aliases:
+          discogs: Depressive Black Metal
+          discogs_maest: Depressive Black Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      doo_wop:
+        canonical: Doo Wop
+        source_aliases:
+          discogs: Doo Wop
+          discogs_maest: Doo Wop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      doom_metal:
+        canonical: Doom Metal
+        source_aliases:
+          discogs: Doom Metal
+          discogs_maest: Doom Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      dream_pop:
+        canonical: Dream Pop
+        source_aliases:
+          discogs: Dream Pop
+          discogs_maest: Dream Pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      emo:
+        canonical: Emo
+        source_aliases:
+          discogs: Emo
+          discogs_maest: Emo
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ethereal:
+        canonical: Ethereal
+        source_aliases:
+          discogs: Ethereal
+          discogs_maest: Ethereal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      experimental:
+        canonical: Experimental
+        source_aliases:
+          discogs: Experimental
+          discogs_maest: Experimental
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      folk_metal:
+        canonical: Folk Metal
+        source_aliases:
+          discogs: Folk Metal
+          discogs_maest: Folk Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      folk_rock:
+        canonical: Folk Rock
+        source_aliases:
+          discogs: Folk Rock
+          discogs_maest: Folk Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      funeral_doom_metal:
+        canonical: Funeral Doom Metal
+        source_aliases:
+          discogs: Funeral Doom Metal
+          discogs_maest: Funeral Doom Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      funk_metal:
+        canonical: Funk Metal
+        source_aliases:
+          discogs: Funk Metal
+          discogs_maest: Funk Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      garage_rock:
+        canonical: Garage Rock
+        source_aliases:
+          discogs: Garage Rock
+          discogs_maest: Garage Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      glam:
+        canonical: Glam
+        source_aliases:
+          discogs: Glam
+          discogs_maest: Glam
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      goregrind:
+        canonical: Goregrind
+        source_aliases:
+          discogs: Goregrind
+          discogs_maest: Goregrind
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      goth_rock:
+        canonical: Goth Rock
+        source_aliases:
+          discogs: Goth Rock
+          discogs_maest: Goth Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      gothic_metal:
+        canonical: Gothic Metal
+        source_aliases:
+          discogs: Gothic Metal
+          discogs_maest: Gothic Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      grindcore:
+        canonical: Grindcore
+        source_aliases:
+          discogs: Grindcore
+          discogs_maest: Grindcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      grunge:
+        canonical: Grunge
+        source_aliases:
+          discogs: Grunge
+          discogs_maest: Grunge
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hard_rock:
+        canonical: Hard Rock
+        source_aliases:
+          discogs: Hard Rock
+          discogs_maest: Hard Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      hardcore:
+        canonical: Hardcore
+        source_aliases:
+          discogs: Hardcore
+          discogs_maest: Hardcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      heavy_metal:
+        canonical: Heavy Metal
+        source_aliases:
+          discogs: Heavy Metal
+          discogs_maest: Heavy Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      indie_rock:
+        canonical: Indie Rock
+        source_aliases:
+          discogs: Indie Rock
+          discogs_maest: Indie Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      industrial:
+        canonical: Industrial
+        source_aliases:
+          discogs: Industrial
+          discogs_maest: Industrial
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      krautrock:
+        canonical: Krautrock
+        source_aliases:
+          discogs: Krautrock
+          discogs_maest: Krautrock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      lo_fi:
+        canonical: Lo-Fi
+        source_aliases:
+          discogs: Lo-Fi
+          discogs_maest: Lo-Fi
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      lounge:
+        canonical: Lounge
+        source_aliases:
+          discogs: Lounge
+          discogs_maest: Lounge
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      math_rock:
+        canonical: Math Rock
+        source_aliases:
+          discogs: Math Rock
+          discogs_maest: Math Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      melodic_death_metal:
+        canonical: Melodic Death Metal
+        source_aliases:
+          discogs: Melodic Death Metal
+          discogs_maest: Melodic Death Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      melodic_hardcore:
+        canonical: Melodic Hardcore
+        source_aliases:
+          discogs: Melodic Hardcore
+          discogs_maest: Melodic Hardcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      metalcore:
+        canonical: Metalcore
+        source_aliases:
+          discogs: Metalcore
+          discogs_maest: Metalcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      mod:
+        canonical: Mod
+        source_aliases:
+          discogs: Mod
+          discogs_maest: Mod
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      neofolk:
+        canonical: Neofolk
+        source_aliases:
+          discogs: Neofolk
+          discogs_maest: Neofolk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      new_wave:
+        canonical: New Wave
+        source_aliases:
+          discogs: New Wave
+          discogs_maest: New Wave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      no_wave:
+        canonical: No Wave
+        source_aliases:
+          discogs: No Wave
+          discogs_maest: No Wave
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      noise:
+        canonical: Noise
+        source_aliases:
+          discogs: Noise
+          discogs_maest: Noise
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      noisecore:
+        canonical: Noisecore
+        source_aliases:
+          discogs: Noisecore
+          discogs_maest: Noisecore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      nu_metal:
+        canonical: Nu Metal
+        source_aliases:
+          discogs: Nu Metal
+          discogs_maest: Nu Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      oi:
+        canonical: Oi
+        source_aliases:
+          discogs: Oi
+          discogs_maest: Oi
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      parody:
+        canonical: Parody
+        source_aliases:
+          discogs: Parody
+          discogs_maest: Parody
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      pop_punk:
+        canonical: Pop Punk
+        source_aliases:
+          discogs: Pop Punk
+          discogs_maest: Pop Punk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      pop_rock:
+        canonical: Pop Rock
+        source_aliases:
+          discogs: Pop Rock
+          discogs_maest: Pop Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      pornogrind:
+        canonical: Pornogrind
+        source_aliases:
+          discogs: Pornogrind
+          discogs_maest: Pornogrind
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      post_rock:
+        canonical: Post Rock
+        source_aliases:
+          discogs: Post Rock
+          discogs_maest: Post Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      post_hardcore:
+        canonical: Post-Hardcore
+        source_aliases:
+          discogs: Post-Hardcore
+          discogs_maest: Post-Hardcore
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      post_metal:
+        canonical: Post-Metal
+        source_aliases:
+          discogs: Post-Metal
+          discogs_maest: Post-Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      post_punk:
+        canonical: Post-Punk
+        source_aliases:
+          discogs: Post-Punk
+          discogs_maest: Post-Punk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      power_metal:
+        canonical: Power Metal
+        source_aliases:
+          discogs: Power Metal
+          discogs_maest: Power Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      power_pop:
+        canonical: Power Pop
+        source_aliases:
+          discogs: Power Pop
+          discogs_maest: Power Pop
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      power_violence:
+        canonical: Power Violence
+        source_aliases:
+          discogs: Power Violence
+          discogs_maest: Power Violence
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      prog_rock:
+        canonical: Prog Rock
+        source_aliases:
+          discogs: Prog Rock
+          discogs_maest: Prog Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      progressive_metal:
+        canonical: Progressive Metal
+        source_aliases:
+          discogs: Progressive Metal
+          discogs_maest: Progressive Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      psychedelic_rock:
+        canonical: Psychedelic Rock
+        source_aliases:
+          discogs: Psychedelic Rock
+          discogs_maest: Psychedelic Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      psychobilly:
+        canonical: Psychobilly
+        source_aliases:
+          discogs: Psychobilly
+          discogs_maest: Psychobilly
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      pub_rock:
+        canonical: Pub Rock
+        source_aliases:
+          discogs: Pub Rock
+          discogs_maest: Pub Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      punk:
+        canonical: Punk
+        source_aliases:
+          discogs: Punk
+          discogs_maest: Punk
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rock_and_roll:
+        canonical: Rock & Roll
+        source_aliases:
+          discogs: Rock & Roll
+          discogs_maest: Rock & Roll
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      rockabilly:
+        canonical: Rockabilly
+        source_aliases:
+          discogs: Rockabilly
+          discogs_maest: Rockabilly
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      shoegaze:
+        canonical: Shoegaze
+        source_aliases:
+          discogs: Shoegaze
+          discogs_maest: Shoegaze
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      ska:
+        canonical: Ska
+        source_aliases:
+          discogs: Ska
+          discogs_maest: Ska
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      sludge_metal:
+        canonical: Sludge Metal
+        source_aliases:
+          discogs: Sludge Metal
+          discogs_maest: Sludge Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      soft_rock:
+        canonical: Soft Rock
+        source_aliases:
+          discogs: Soft Rock
+          discogs_maest: Soft Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      southern_rock:
+        canonical: Southern Rock
+        source_aliases:
+          discogs: Southern Rock
+          discogs_maest: Southern Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      space_rock:
+        canonical: Space Rock
+        source_aliases:
+          discogs: Space Rock
+          discogs_maest: Space Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      speed_metal:
+        canonical: Speed Metal
+        source_aliases:
+          discogs: Speed Metal
+          discogs_maest: Speed Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      stoner_rock:
+        canonical: Stoner Rock
+        source_aliases:
+          discogs: Stoner Rock
+          discogs_maest: Stoner Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      surf:
+        canonical: Surf
+        source_aliases:
+          discogs: Surf
+          discogs_maest: Surf
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      symphonic_rock:
+        canonical: Symphonic Rock
+        source_aliases:
+          discogs: Symphonic Rock
+          discogs_maest: Symphonic Rock
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      technical_death_metal:
+        canonical: Technical Death Metal
+        source_aliases:
+          discogs: Technical Death Metal
+          discogs_maest: Technical Death Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      thrash:
+        canonical: Thrash
+        source_aliases:
+          discogs: Thrash
+          discogs_maest: Thrash
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      twist:
+        canonical: Twist
+        source_aliases:
+          discogs: Twist
+          discogs_maest: Twist
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      viking_metal:
+        canonical: Viking Metal
+        source_aliases:
+          discogs: Viking Metal
+          discogs_maest: Viking Metal
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      y_y:
+        canonical: Yé-Yé
+        source_aliases:
+          discogs: Yé-Yé
+          discogs_maest: Yé-Yé
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false
+  stage_and_screen:
+    canonical: Stage & Screen
+    subgenres:
+      musical:
+        canonical: Musical
+        source_aliases:
+          discogs: Musical
+          discogs_maest: Musical
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      score:
+        canonical: Score
+        source_aliases:
+          discogs: Score
+          discogs_maest: Score
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      soundtrack:
+        canonical: Soundtrack
+        source_aliases:
+          discogs: Soundtrack
+          discogs_maest: Soundtrack
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+      theme:
+        canonical: Theme
+        source_aliases:
+          discogs: Theme
+          discogs_maest: Theme
+          beatport: null
+          spotify: null
+          musicbrainz: null
+        primary: false
+        active: false
+    active: false

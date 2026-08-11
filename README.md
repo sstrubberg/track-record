@@ -268,13 +268,28 @@ one on page 3 both land in the same "Apply Tags" click, and both
 page.
 
 A row proposing a tag that doesn't exist in the library yet also gets
-a category picker, defaulting to that action's own `new_tag_category`
-config if that resolves to a real category - always changeable, and
-never pre-checked regardless of confidence. Creating a tag is a bigger
-action than adding an existing one, so it always needs an explicit
-decision. Clicking "Apply Tags" splits whatever's checked by kind
-under the hood and calls each action's own `apply_decisions()` -
-potentially both in one click - then reports one combined result.
+a category picker - always changeable, and never pre-checked
+regardless of confidence, since creating a tag is a bigger action than
+adding an existing one and always needs an explicit decision. For
+Genre/Subgenre specifically, the picker's own default tries a smarter
+guess first: if the proposed tag's name is a taxonomy-recognized
+family or subgenre name (`config/genre_taxonomy.yaml`, the same
+Discogs 400-style list `plan.py`'s scoring already draws on) and that
+family's `Sub-genre - {Family}` category already exists in Lexicon,
+that's the pre-filled default - "P.Funk" defaults to Sub-genre - Funk
+/ Soul rather than the flat `new_tag_category` catch-all. Falls back
+to `new_tag_category` (if that resolves to a real category) whenever
+there's no family match, the name is ambiguous across more than one
+family, or the matched family has no category yet - see
+`genre_family_hint.py`'s own docstring for why this is deliberately
+narrower than the "Reorganize Genre Tags" workflow this project once
+shipped and removed: no renaming, no moving existing tags, no picker
+of its own - just a smarter default for a dropdown that already
+existed. Mood/Theme has no such taxonomy to draw on, so its create
+rows only ever use the flat `new_tag_category` default. Clicking
+"Apply Tags" splits whatever's checked by kind under the hood and
+calls each action's own `apply_decisions()` - potentially both in one
+click - then reports one combined result.
 
 Different DJ edits of the same song ("Promiscuous (Intro Clean)" /
 "Promiscuous (Quick Hit Clean)") show up as separate tracks - separate
