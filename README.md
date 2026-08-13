@@ -3,10 +3,8 @@
 A [Lexicon](https://www.lexicondj.com/) DJ plugin + companion app that
 enriches a DJ's library with tags Lexicon's built-in "Find Tags" doesn't
 reliably provide: accurate, granular genre/subgenre tags and mood/theme
-tags, both with full source attribution and a review step. Bundles in
-the existing [Billboard chart-tagging tool](https://github.com/sstrubberg/billboard-tag)
-as a third action, since all three share the same
-fetch → score → review → apply shape.
+tags, both with full source attribution and a review step, run
+side-by-side from one companion-app screen.
 
 Built to be shared with other DJs, fully open source.
 
@@ -21,11 +19,14 @@ on the ones that are genuinely ambiguous.
 
 ## Scope
 
-Three actions, one shared pipeline shape:
+Two actions, one shared pipeline shape, both run from the same review
+screen:
 
-- **Charts** - ported from `billboard_tag.py`
 - **Genre/Subgenre** - Discogs + two independent local audio models
 - **Mood/Theme** - a local audio model only (see below for why)
+
+A third, older utility lives in this repo too - see "Charts action"
+under Status below for what it actually is today.
 
 ## Architecture
 
@@ -361,7 +362,15 @@ been exercised against a real ~1,770-track Lexicon library, including
 real writes; Mood/Theme has been exercised the same way at smaller
 scale so far.
 
-- **Charts action**: ported from `billboard_tag.py` as-is, working.
+- **Charts action**: `charts/billboard_tag.py`, a verbatim port of the
+  standalone [billboard-tag](https://github.com/sstrubberg/billboard-tag)
+  tool - still runs exactly as it always did, but as its own separate
+  script (`python billboard_tag.py ...` from `charts/`), not wired
+  into `review_ui.py`'s unified screen or the shared `scoring.py`
+  module. Already exposes the same `load -> fetch -> score/plan ->
+  review -> apply` shape as the other two actions, so it doubles as
+  the reference implementation for how one would plug in - see
+  `charts/README.md` for exactly what's left to actually unify it.
 - **Genre/Subgenre fetch sources**: Discogs and two independent local
   audio models (`discogs-maest` and `genre_discogs400`) are
   implemented, each with the normalization described above.
