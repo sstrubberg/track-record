@@ -24,7 +24,7 @@ on the ones that are genuinely ambiguous.
 Three actions, one shared pipeline shape:
 
 - **Charts** - ported from `billboard_tag.py`
-- **Genre/Subgenre** - MusicBrainz + Discogs + a local audio model
+- **Genre/Subgenre** - Discogs + two independent local audio models
 - **Mood/Theme** - a local audio model only (see below for why)
 
 ## Architecture
@@ -45,23 +45,28 @@ track-record/
     ├── charts/                  # ported billboard_tag.py logic - reference
     │                             #   implementation for how an action plugs in
     ├── fetch/
-    │   ├── musicbrainz.py
+    │   ├── musicbrainz.py               # untouched, just no longer wired into plan.py
     │   ├── discogs.py
-    │   ├── llm_web_search.py    # Claude/Gemini + web search, artist+title+genre in
-    │   ├── audio_model.py       # discogs-maest wrapper (Essentia) - genre/style
-    │   └── audio_model_mood.py  # discogs-effnet + mtg_jamendo_moodtheme - mood/theme
-    ├── scoring.py                 # weighted noisy-OR - shared by both actions
-    ├── lexicon_client.py          # shared Local API client (tracks, tags, writes)
-    ├── apply.py                   # writes approved tags via Lexicon Local API - shared
-    ├── plan.py                    # Genre/Subgenre: load -> fetch -> score
+    │   ├── llm_web_search.py            # Claude/Gemini + web search, artist+title+genre in
+    │   ├── audio_model.py               # discogs-maest wrapper (Essentia) - genre/style
+    │   ├── audio_model_genre_effnet.py  # genre_discogs400 - second, independent genre model
+    │   └── audio_model_mood.py          # discogs-effnet + mtg_jamendo_moodtheme - mood/theme
+    ├── scoring.py                  # weighted noisy-OR - shared by both actions
+    ├── genre_family_hint.py        # Genre/Subgenre: per-tag category suggestion for new tags
+    ├── lexicon_client.py           # shared Local API client (tracks, tags, writes)
+    ├── scan_progress.py            # whole-library scan position, per action
+    ├── config_editor.py            # ruamel.yaml round-trip load/save for the Settings dialog
+    ├── apply.py                    # writes approved tags via Lexicon Local API - shared
+    ├── plan.py                     # Genre/Subgenre: load -> fetch -> score
     ├── mood_plan.py                # Mood/Theme: its own load -> fetch -> score
     ├── mood_apply.py               # Mood/Theme: thin wrapper around apply.py
-    ├── review_ui.py                 # NiceGUI screen for BOTH actions, one window,
-    │                                 #   one Generate Plan, checkboxes choose which
-    │                                 #   action(s) to include
+    ├── review_ui.py                # NiceGUI screen for BOTH actions, one window,
+    │                                #   one Generate Plan, checkboxes choose which
+    │                                #   action(s) to include, plus a Settings dialog
     └── config/
         ├── source_weights.yaml    # Genre/Subgenre tuning
-        └── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file
+        ├── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file
+        └── genre_taxonomy.yaml    # Discogs 400-style family/subgenre list (genre_family_hint.py)
 ```
 
 ## Shared pipeline
@@ -357,10 +362,14 @@ real writes; Mood/Theme has been exercised the same way at smaller
 scale so far.
 
 - **Charts action**: ported from `billboard_tag.py` as-is, working.
-- **Genre/Subgenre fetch sources**: MusicBrainz, Discogs, and the local
-  `discogs-maest` audio model are implemented, each with the
-  normalization described above. `llm_web_search.py` is a stub, on
-  hold over web search API cost.
+- **Genre/Subgenre fetch sources**: Discogs and two independent local
+  audio models (`discogs-maest` and `genre_discogs400`) are
+  implemented, each with the normalization described above.
+  `llm_web_search.py` is a stub, on hold over web search API cost.
+  MusicBrainz (`fetch/musicbrainz.py`) is implemented and still works
+  standalone but isn't wired into `plan.py` - dropped as an active
+  source after this project's own DJ found its suggestions
+  consistently disappointing.
 - **Mood/Theme fetch source**: the local `discogs-effnet` +
   `mtg_jamendo_moodtheme` audio model (see above) - implemented,
   verified against real tracks.
@@ -381,10 +390,15 @@ scale so far.
   phases (never writes anything), each track's candidates split into
   Genre/Subgenre and Mood/Theme sub-groups so the two never blur
   together, global and per-sub-group "Select all", a category picker
-  on new-tag rows, source/note/links behind an overflow menu, and the
-  one action that writes - "Apply Tags" - applying whatever's
-  checked (pre-checked auto-include rows included) via each action's
-  own `apply_decisions()`, reporting one combined result.
+  on new-tag rows (with a per-tag family suggestion for Genre/Subgenre
+  - see `genre_family_hint.py`), source/note/links behind an overflow
+  menu, and the one action that writes - "Apply Tags" - applying
+  whatever's checked (pre-checked auto-include rows included) via each
+  action's own `apply_decisions()`, reporting one combined result. A
+  gear-icon **Settings** dialog (`config_editor.py`, round-trip YAML so
+  saving never strips either config file's own comments) covers both
+  actions' source weights, auto-include thresholds, and
+  `new_tag_category` without hand-editing YAML.
 - **Apply** (`apply.py`, shared; `mood_apply.py` a thin wrapper around
   it with its own plan/log paths): merge-never-replace, same rule as
   `billboard_tag.py`. A tag that already exists is reused rather than
