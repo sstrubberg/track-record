@@ -1,10 +1,10 @@
 # Track Record
 
-A [Lexicon](https://www.lexicondj.com/) DJ plugin + companion app that
+A companion app for [Lexicon](https://www.lexicondj.com/) that
 enriches a DJ's library with tags Lexicon's built-in "Find Tags" doesn't
 reliably provide: accurate, granular genre/subgenre tags and mood/theme
 tags, both with full source attribution and a review step, run
-side-by-side from one companion-app screen.
+side-by-side from one screen.
 
 Built to be shared with other DJs, fully open source.
 
@@ -29,26 +29,23 @@ screen:
 - **Genre/Subgenre** - Discogs + two independent local audio models
 - **Mood/Theme** - a local audio model only (see below for why)
 
-A third, older utility lives in this repo too - see "Charts action"
-under Status below for what it actually is today.
-
 ## Architecture
 
 Lexicon plugins run in a sandboxed JS environment - no `require()`, no
-spawning processes, no native modules - so Essentia/discogs-maest can't
-run inside the plugin itself. The companion app is a separate local
-Python process; the Lexicon plugin (`lexicon-plugin/`) is a thin
-trigger/status layer, or the companion app is simply run directly by
-the user, closer to how `billboard_tag.py` works today.
+spawning processes, no native modules - so Essentia/discogs-maest could
+never run inside one directly. The companion app sidesteps that by
+being a separate local Python process a DJ runs directly
+(`python review_ui.py`), talking to Lexicon purely over its own Local
+API - reading the library, writing tags - with nothing on the
+Lexicon side involved.
 
 ```
 track-record/
 ├── LICENSE                      # AGPL-3.0
 ├── NOTICE.md                    # third-party model attribution
-├── lexicon-plugin/              # thin JS layer, config.json defines the actions
 └── companion-app/               # the actual work happens here (Python)
-    ├── charts/                  # ported billboard_tag.py logic - reference
-    │                             #   implementation for how an action plugs in
+    ├── charts/                  # ported billboard-tag logic, standalone -
+    │                             #   not wired into review_ui.py
     ├── fetch/
     │   ├── musicbrainz.py               # untouched, just no longer wired into plan.py
     │   ├── discogs.py
@@ -76,9 +73,10 @@ track-record/
 
 ## Shared pipeline
 
-`load → fetch → score/plan → review → apply` - same shape as
-`billboard_tag.py`'s existing `load / fetch / plan / apply`, extended
-with an explicit scoring step and a richer review UI than a flat CSV.
+`load → fetch → score/plan → review → apply` - each stage is a clean
+handoff: read what's needed from Lexicon, call out to fetch sources,
+score the results into a plan file, present it for review, then write
+back only what's approved.
 
 ### Choosing what to scan
 
@@ -168,13 +166,11 @@ untouched original if the normalized version finds nothing:
 - **Edit/version suffixes** - `"Hollaback Girl (Intro Clean)"`,
   `"... (MM Edit)"` - stripped from the title before search (a survey
   of one real library found 99% of tracks carried at least one of
-  these). Same paren/bracket-stripping regex `billboard_tag.py` already
-  uses for chart-title matching.
+  these), via a paren/bracket-stripping regex.
 - **Merged featured-artist credits** - `"Nelly Furtado ft Timbaland"`
   is stored as one Artist field, but Discogs indexes releases under the
-  primary artist alone. Same `ARTIST_SPLIT` pattern `billboard_tag.py`
-  uses for chart-artist matching, applied before search rather than to
-  build a fuzzy key.
+  primary artist alone - split on the common separators (`ft`, `feat`,
+  `x`, `&`, commas) before search, not used to build a fuzzy key.
 - **Bootleg/compilation Discogs releases** - a result whose `format`
   says `Compilation` or `Unofficial Release` describes dozens of
   unrelated tracks, not the one asked about, and is skipped rather than
@@ -182,9 +178,9 @@ untouched original if the normalized version finds nothing:
 
 These fix the common, generic cases. Some mismatches are one-off and
 not fixable by normalization - e.g. an act catalogued under a
-stylized spelling Discogs itself uses (`N*E*R*D`). `billboard_tag.py`'s
-`ARTIST_ALIASES` dict is the precedent for handling a specific one-off
-by hand if one turns out to matter.
+stylized spelling Discogs itself uses (`N*E*R*D`). A small hand-
+maintained alias dict, keyed by the DJ's own spelling, is the natural
+way to handle a specific one-off by hand if one turns out to matter.
 
 ### Mood/Theme fetch source
 
@@ -366,15 +362,6 @@ been exercised against a real ~1,770-track Lexicon library, including
 real writes; Mood/Theme has been exercised the same way at smaller
 scale so far.
 
-- **Charts action**: `charts/billboard_tag.py`, a verbatim port of the
-  standalone [billboard-tag](https://github.com/sstrubberg/billboard-tag)
-  tool - still runs exactly as it always did, but as its own separate
-  script (`python billboard_tag.py ...` from `charts/`), not wired
-  into `review_ui.py`'s unified screen or the shared `scoring.py`
-  module. Already exposes the same `load -> fetch -> score/plan ->
-  review -> apply` shape as the other two actions, so it doubles as
-  the reference implementation for how one would plug in - see
-  `charts/README.md` for exactly what's left to actually unify it.
 - **Genre/Subgenre fetch sources**: Discogs and two independent local
   audio models (`discogs-maest` and `genre_discogs400`) are
   implemented, each with the normalization described above.
@@ -413,9 +400,10 @@ scale so far.
   actions' source weights, auto-include thresholds, and
   `new_tag_category` without hand-editing YAML.
 - **Apply** (`apply.py`, shared; `mood_apply.py` a thin wrapper around
-  it with its own plan/log paths): merge-never-replace, same rule as
-  `billboard_tag.py`. A tag that already exists is reused rather than
-  recreated, even for a "propose a new tag" row.
+  it with its own plan/log paths): merge-never-replace - reads the
+  track's live tag array and appends rather than overwrites, so
+  nothing existing gets silently dropped. A tag that already exists is
+  reused rather than recreated, even for a "propose a new tag" row.
 
 `llm_web_search.py` remains a stub, on hold over web search API cost
 for a full library pass.
