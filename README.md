@@ -13,9 +13,13 @@ Built to be shared with other DJs, fully open source.
 Lexicon's built-in genre tagging (pulling from Beatport, Spotify,
 MusicBrainz, Discogs) merges results with no visible source and no way
 to verify a match - and in practice comes back too generic (e.g.
-"House" instead of the actual subgenre). This toolkit surfaces every
-source separately, with confidence, and only asks for a human decision
-on the ones that are genuinely ambiguous.
+"House" instead of the actual subgenre). This toolkit draws from its
+own, different sources instead - Discogs and independent local audio
+models, not Lexicon's Beatport/Spotify/MusicBrainz mix - and surfaces
+each one separately with confidence, so a DJ can decide what to trust
+rather than accept a black-box merge. A tag confident enough to clear
+its own auto-include bar is pre-checked, but review is the default for
+everything else, not just edge cases.
 
 ## Scope
 
