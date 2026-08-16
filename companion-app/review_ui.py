@@ -263,6 +263,14 @@ def build_ui() -> None:
         # scan actually runs, since that's the one time the count or
         # the cursor could plausibly have changed.
         "library_snapshot": None,
+        # Last "Check for Updates" result in the Settings dialog's Audio
+        # models card, keyed by model_versions.ModelFile.label - None
+        # until checked at least once this session (nothing checks the
+        # network just from opening Settings). Cleared for a specific
+        # model right after it's updated, so its row falls back to the
+        # plain "vN, from what's on disk" reading rather than showing a
+        # stale "update available" for a version that's already applied.
+        "model_check_results": {},
     }
     progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
     stop_event = threading.Event()
@@ -1189,25 +1197,99 @@ def build_ui() -> None:
             with ui.card().classes("w-full"):
                 ui.label("Audio models").classes("font-bold")
                 ui.label(
-                    "Version numbers Essentia itself assigns, read from what's "
-                    "already downloaded - opening this doesn't check the network."
+                    "Version numbers Essentia itself assigns. Opening this doesn't "
+                    "check the network on its own - click \"Check for Updates\" to "
+                    "actually ask essentia.upf.edu whether anything newer is out."
                 ).classes("text-xs text-gray-500 mb-2")
-                for model in model_versions.MODEL_FILES:
-                    with ui.row().classes("items-center gap-2"):
-                        ui.label(model.label).classes("text-sm w-96")
-                        if model.weights_path.exists():
-                            ui.label(f"v{model.current_version}").classes(
-                                "text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5"
+
+                model_check_status = ui.label("").classes("text-xs text-gray-500")
+
+                async def apply_model_update(model, target_version: int, current_version: int) -> None:
+                    size_note = " (~330 MB)" if "discogs-maest" in model.label else " (~2-20 MB)"
+                    with ui.dialog() as confirm_dialog, ui.card():
+                        ui.label(
+                            f"Update {model.label} from v{current_version} to "
+                            f"v{target_version}? Downloads the new version{size_note}, "
+                            f"switches fetch/{model.module_path.name} to use it, and "
+                            f"removes the old cached file. Track Record needs a "
+                            f"restart afterward to actually start using it - the "
+                            f"running app already has the old version loaded in "
+                            f"memory."
+                        )
+                        with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                            ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
+                            ui.button(
+                                "Update", color="primary",
+                                on_click=lambda: confirm_dialog.submit("continue"),
                             )
-                        else:
-                            ui.label("not downloaded yet").classes("text-xs text-gray-400 italic")
-                ui.label(
-                    "Run \"python model_versions.py\" from companion-app/ to check "
-                    "Essentia's own listing for a newer version of any of these, or "
-                    "\"python model_versions.py --apply\" to switch to one - not done "
-                    "from here, since it means a real download plus a source-file "
-                    "change, not just a config value."
-                ).classes("text-xs text-gray-500 mt-2")
+                    if await confirm_dialog != "continue":
+                        return
+                    model_check_status.text = f"updating {model.label}..."
+                    try:
+                        await run.io_bound(model_versions.apply_update, model, target_version)
+                    except Exception as e:
+                        model_check_status.text = ""
+                        notify(f"Couldn't update {model.label}: {e}", type="negative")
+                        return
+                    state["model_check_results"].pop(model.label, None)
+                    model_check_status.text = ""
+                    model_rows.refresh()
+                    notify(
+                        f"{model.label} updated to v{target_version} - restart "
+                        f"Track Record for this to take effect",
+                        type="positive",
+                    )
+
+                @ui.refreshable
+                def model_rows() -> None:
+                    for model in model_versions.MODEL_FILES:
+                        check = state["model_check_results"].get(model.label)
+                        with ui.row().classes("items-center gap-2"):
+                            ui.label(model.label).classes("text-sm w-96")
+                            if check is not None and check.get("error"):
+                                ui.label(f"couldn't check: {check['error']}").classes(
+                                    "text-xs text-red-600"
+                                )
+                            elif check is not None and check["update_available"]:
+                                ui.label(f"v{check['current']} → v{check['latest']} available").classes(
+                                    "text-xs text-orange-500"
+                                )
+                                ui.button(
+                                    "Update",
+                                    on_click=lambda model=model, check=check: apply_model_update(
+                                        model, check["latest"], check["current"]
+                                    ),
+                                ).props("outline dense size=sm")
+                            elif model.weights_path.exists():
+                                label = f"v{model.current_version}"
+                                if check is not None:
+                                    label += " (up to date)"
+                                ui.label(label).classes(
+                                    "text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5"
+                                )
+                            else:
+                                ui.label("not downloaded yet").classes("text-xs text-gray-400 italic")
+
+                model_rows()
+
+                async def check_model_updates() -> None:
+                    model_check_status.text = "checking essentia.upf.edu/models.html..."
+                    results = await run.io_bound(model_versions.check_all)
+                    state["model_check_results"] = {r["label"]: r for r in results}
+                    model_check_status.text = ""
+                    model_rows.refresh()
+                    n_updates = sum(1 for r in results if r["update_available"])
+                    n_errors = sum(1 for r in results if r.get("error"))
+                    if n_errors:
+                        notify(f"Couldn't reach essentia.upf.edu for {n_errors} model(s)", type="negative")
+                    elif n_updates:
+                        notify(f"{n_updates} model update(s) available", type="warning")
+                    else:
+                        notify("All audio models up to date", type="positive")
+
+                ui.button("Check for Updates", on_click=check_model_updates).props(
+                    "outline dense size=sm"
+                ).classes("mt-2")
         # Same await-the-dialog idiom as every confirm dialog elsewhere
         # in this file (reset_scan_progress, generate's discard-
         # unsaved-changes prompt) - dialog.open() alone (a plain sync

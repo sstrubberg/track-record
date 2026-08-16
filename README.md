@@ -405,17 +405,17 @@ scale so far.
   track's live tag array and appends rather than overwrites, so
   nothing existing gets silently dropped. A tag that already exists is
   reused rather than recreated, even for a "propose a new tag" row.
-- **Model versions** (`model_versions.py`): the audio-model fetch
-  scripts cache a model file forever once downloaded - no version
-  check of any kind on their own, so nothing changes underfoot between
-  runs. `python model_versions.py` reads Essentia's own model listing
-  and reports whether a newer version of any of the four model files
-  this project uses is available; `--apply` downloads it, edits the
-  matching `fetch/audio_model*.py` file's URL/path constants to point
-  at it, and removes the old cached file. The Settings dialog's "Audio
-  models" card shows current versions (from what's already downloaded,
-  no network call) - checking and updating stay CLI-only, since it's a
-  real download plus a source-file change, not a config value.
+- **Model versions** (`model_versions.py`, also in the Settings
+  dialog): the audio-model fetch scripts cache a model file forever
+  once downloaded - no version check of any kind on their own, so
+  nothing changes underfoot between runs. The Settings dialog's "Audio
+  models" card shows current versions from what's already downloaded
+  (no network call just from opening it); its own "Check for Updates"
+  reads Essentia's own model listing for real and gives any
+  out-of-date model an "Update" button, behind a confirmation (it's a
+  real download, a source-file edit, and needs a restart, not a config
+  value). `python model_versions.py` / `--apply` is the same check/
+  update from a terminal instead, e.g. for scripting.
 
 `llm_web_search.py` remains a stub, on hold over web search API cost
 for a full library pass.

@@ -157,21 +157,28 @@ long; shorter clips raise `input signal is too short`.
 
 Once a model file is downloaded it's cached forever - none of the
 `fetch/audio_model*.py` scripts ever check for a newer version on
-their own, so nothing changes underfoot between runs. `model_versions.py`
-is the explicit way to check and switch:
+their own, so nothing changes underfoot between runs. The Settings
+dialog's "Audio models" card is the normal way to check and update:
+opening it doesn't touch the network (versions shown are read from
+what's already downloaded), but "Check for Updates" does, and any
+model with a newer version published gets its own "Update" button -
+confirms first (it's a real download, a source-file change, and needs
+a restart to take effect, not a config value applied instantly), then
+runs in the background.
+
+`model_versions.py` is the same thing from a terminal, for scripting
+or when the GUI isn't running:
 
 ```
 python model_versions.py              # report only, changes nothing
 python model_versions.py --apply      # download + switch to newer ones
 ```
 
-Reads Essentia's own [models.html](https://essentia.upf.edu/models.html)
-listing for each model this project uses (Version numbers are
+Both read Essentia's own [models.html](https://essentia.upf.edu/models.html)
+listing for each model this project uses (version numbers are
 Essentia's own, baked into the filename - not something this project
-assigns). `--apply` downloads the new version, edits the matching
+assigns), download the new version, edit the matching
 `fetch/audio_model*.py` file's URL/path constants to point at it, and
-deletes the old cached file. The Settings dialog's "Audio models" card
-shows current versions (from what's already downloaded, no network
-call) but doesn't check or update from there - that's deliberately
-this CLI-only, since it's a real download plus a source-file change,
-not a config value.
+delete the old cached file. **Restart Track Record afterward** -
+editing the source file doesn't change what's already loaded in the
+running process's memory.
