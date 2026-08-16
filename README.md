@@ -29,6 +29,28 @@ screen:
 - **Genre/Subgenre** - Discogs + two independent local audio models
 - **Mood/Theme** - a local audio model only (see below for why)
 
+## Getting started
+
+1. **Turn on Lexicon's own Local API** - off by default, and nothing
+   here works without it. In Lexicon: **Settings → Integrations →
+   Local API**, switch on **"Local API Enabled"**. Track Record talks
+   to Lexicon entirely through this (`localhost:48624`, no separate
+   account or token) - Lexicon has to already be open, every time, for
+   any of this to do anything.
+2. **Install and configure the companion app**:
+   ```
+   cd companion-app
+   pip install -r requirements.txt
+   cp .env.example .env   # fill in DISCOGS_TOKEN - see companion-app/README.md
+   ```
+3. **Run it**: `python review_ui.py` - one native window, one command,
+   covers Genre/Subgenre and Mood/Theme both.
+
+See [companion-app/README.md](companion-app/README.md) for the full
+walkthrough - what each part of the screen does, the Settings dialog,
+checking for audio model updates, and running an individual fetch
+source standalone to sanity-check it.
+
 ## Architecture
 
 Lexicon plugins run in a sandboxed JS environment - no `require()`, no
@@ -36,11 +58,8 @@ spawning processes, no native modules - so Essentia/discogs-maest could
 never run inside one directly. The companion app sidesteps that by
 being a separate local Python process a DJ runs directly
 (`python review_ui.py`), talking to Lexicon purely over its own Local
-API - reading the library, writing tags - with nothing on the
-Lexicon side involved. That API has to be switched on in Lexicon
-itself first (off by default; see companion-app's own README for
-exactly where) and Lexicon has to already be running - there's nothing
-listening at `localhost:48624` otherwise.
+API (see "Getting started" above for turning that on) - reading the
+library, writing tags - with nothing on the Lexicon side involved.
 
 ```
 track-record/
