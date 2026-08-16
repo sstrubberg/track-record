@@ -8,6 +8,17 @@ is where Essentia and everything else actually runs).
 pip install -r requirements.txt
 ```
 
+## Before running anything
+
+**Lexicon has to already be open**, with its Local API switched on -
+every action here (reading the library, fetching categories, writing
+tags) goes through `http://localhost:48624/v1`, and nothing's
+listening there unless Lexicon itself is running. This is a one-time
+toggle, off by default: in Lexicon, **Settings → Integrations → Local
+API**, switch on **"Local API Enabled"**. No token or key needed on
+Track Record's side - the connection is bare `localhost`, nothing to
+put in `.env` for it.
+
 ## Environment variables
 
 ```

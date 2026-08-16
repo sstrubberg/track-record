@@ -37,7 +37,10 @@ never run inside one directly. The companion app sidesteps that by
 being a separate local Python process a DJ runs directly
 (`python review_ui.py`), talking to Lexicon purely over its own Local
 API - reading the library, writing tags - with nothing on the
-Lexicon side involved.
+Lexicon side involved. That API has to be switched on in Lexicon
+itself first (off by default; see companion-app's own README for
+exactly where) and Lexicon has to already be running - there's nothing
+listening at `localhost:48624` otherwise.
 
 ```
 track-record/
