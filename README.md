@@ -57,6 +57,7 @@ track-record/
     ├── genre_family_hint.py        # Genre/Subgenre: per-tag category suggestion for new tags
     ├── lexicon_client.py           # shared Local API client (tracks, tags, writes)
     ├── scan_progress.py            # whole-library scan position, per action
+    ├── model_versions.py           # checks/switches audio model versions - see Status
     ├── config_editor.py            # ruamel.yaml round-trip load/save for the Settings dialog
     ├── apply.py                    # writes approved tags via Lexicon Local API - shared
     ├── plan.py                     # Genre/Subgenre: load -> fetch -> score
@@ -404,6 +405,17 @@ scale so far.
   track's live tag array and appends rather than overwrites, so
   nothing existing gets silently dropped. A tag that already exists is
   reused rather than recreated, even for a "propose a new tag" row.
+- **Model versions** (`model_versions.py`): the audio-model fetch
+  scripts cache a model file forever once downloaded - no version
+  check of any kind on their own, so nothing changes underfoot between
+  runs. `python model_versions.py` reads Essentia's own model listing
+  and reports whether a newer version of any of the four model files
+  this project uses is available; `--apply` downloads it, edits the
+  matching `fetch/audio_model*.py` file's URL/path constants to point
+  at it, and removes the old cached file. The Settings dialog's "Audio
+  models" card shows current versions (from what's already downloaded,
+  no network call) - checking and updating stay CLI-only, since it's a
+  real download plus a source-file change, not a config value.
 
 `llm_web_search.py` remains a stub, on hold over web search API cost
 for a full library pass.

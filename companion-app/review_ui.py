@@ -117,6 +117,7 @@ from nicegui import run, ui
 import apply as genre_apply
 import config_editor
 import lexicon_client
+import model_versions
 import mood_apply
 import mood_plan
 import plan as genre_plan_module
@@ -1185,6 +1186,28 @@ def build_ui() -> None:
                 "Mood / Theme",
                 "Only one source right now - the local mood/theme audio model.",
             )
+            with ui.card().classes("w-full"):
+                ui.label("Audio models").classes("font-bold")
+                ui.label(
+                    "Version numbers Essentia itself assigns, read from what's "
+                    "already downloaded - opening this doesn't check the network."
+                ).classes("text-xs text-gray-500 mb-2")
+                for model in model_versions.MODEL_FILES:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.label(model.label).classes("text-sm w-96")
+                        if model.weights_path.exists():
+                            ui.label(f"v{model.current_version}").classes(
+                                "text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5"
+                            )
+                        else:
+                            ui.label("not downloaded yet").classes("text-xs text-gray-400 italic")
+                ui.label(
+                    "Run \"python model_versions.py\" from companion-app/ to check "
+                    "Essentia's own listing for a newer version of any of these, or "
+                    "\"python model_versions.py --apply\" to switch to one - not done "
+                    "from here, since it means a real download plus a source-file "
+                    "change, not just a config value."
+                ).classes("text-xs text-gray-500 mt-2")
         # Same await-the-dialog idiom as every confirm dialog elsewhere
         # in this file (reset_scan_progress, generate's discard-
         # unsaved-changes prompt) - dialog.open() alone (a plain sync

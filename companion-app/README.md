@@ -152,3 +152,26 @@ copy - only its ~2 MB classification head is new if Mood/Theme's
 weights are already present, ~20 MB combined otherwise. Any of the
 audio-model scripts: the audio file needs to be at least ~30 seconds
 long; shorter clips raise `input signal is too short`.
+
+## Checking for newer audio models
+
+Once a model file is downloaded it's cached forever - none of the
+`fetch/audio_model*.py` scripts ever check for a newer version on
+their own, so nothing changes underfoot between runs. `model_versions.py`
+is the explicit way to check and switch:
+
+```
+python model_versions.py              # report only, changes nothing
+python model_versions.py --apply      # download + switch to newer ones
+```
+
+Reads Essentia's own [models.html](https://essentia.upf.edu/models.html)
+listing for each model this project uses (Version numbers are
+Essentia's own, baked into the filename - not something this project
+assigns). `--apply` downloads the new version, edits the matching
+`fetch/audio_model*.py` file's URL/path constants to point at it, and
+deletes the old cached file. The Settings dialog's "Audio models" card
+shows current versions (from what's already downloaded, no network
+call) but doesn't check or update from there - that's deliberately
+this CLI-only, since it's a real download plus a source-file change,
+not a config value.
