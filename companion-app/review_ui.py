@@ -336,23 +336,76 @@ def build_ui() -> None:
         "all": "Leave count blank to scan the whole library.",
         "recent": f"Scans the N most recently added tracks (blank = {genre_plan_module.DEFAULT_RECENT_COUNT}).",
         "incoming": "Scans everything in your Incoming bin; set a count to cap it.",
+        "track": "Search by artist/title - each DJ edit of a song is its own separate track.",
     }
+
+    # {track_id: "Artist - Title"} for the "Single track" picker below -
+    # built once, synchronously, right here at startup rather than lazily
+    # on first use. Tried lazy first (only fetch if "Single track" ever
+    # actually gets picked) via a later set_options() call, but that ran
+    # into a real NiceGUI/Quasar limitation confirmed directly with a
+    # minimal reproduction outside this app entirely: a with_input=True
+    # ui.select's dropdown never picks up options set after the element
+    # is already mounted, even though the server-side model updates
+    # correctly - only options given at construction time ever reach the
+    # client. Fetching eagerly sidesteps it, and the actual cost is
+    # trivial (confirmed: ~0.3s for a 1,770-track library) - Lexicon
+    # already has to be running for anything in this app to work at all,
+    # so this isn't adding a new dependency, just moving an already-
+    # required cheap read earlier. Edit/version info (e.g. "(MM Edit)",
+    # "(Intro Clean)") already lives in Lexicon's own title field, so
+    # distinct DJ edits of the same song already read as distinct
+    # options with no extra handling needed here.
+    #
+    # Wrapped: this is the one place in build_ui() that now touches the
+    # network before any button is ever clicked - everywhere else, a
+    # Lexicon connection failure surfaces on the specific action that
+    # needed it (e.g. "Generate Plan" failing with a clear error),
+    # never by refusing to even open the window. Caught directly:
+    # launching with Lexicon not yet running crashed build_ui() itself
+    # before this try/except existed - a real regression, not a
+    # hypothetical one. track_options_error, if set, is surfaced right
+    # on the picker instead (see its use below) rather than only in a
+    # log a DJ would never see from the native window.
+    track_options: dict[int, str] = {}
+    track_options_error: str | None = None
+    try:
+        track_options = {
+            t["id"]: f"{t.get('artist') or '(no artist)'} - {t.get('title') or '(no title)'}"
+            for t in sorted(lexicon_client.fetch_library(), key=lambda t: (t.get("artist") or "", t.get("title") or ""))
+        }
+    except Exception as e:
+        track_options_error = str(e)
 
     with ui.row().classes("items-center gap-2"):
         scan_mode_select = ui.select(
-            {"all": "Whole library", "recent": "Most recently added", "incoming": "Incoming"},
+            {"all": "Whole library", "recent": "Most recently added", "incoming": "Incoming", "track": "Single track"},
             value="all",
             label="scan",
         ).classes("w-48")
         limit_input = ui.number(label="count (optional)", min=1).classes("w-40")
+        track_picker = ui.select(
+            track_options, label="track", with_input=True,
+        ).props("dense outlined").classes("w-96")
+        track_picker.visible = False
         generate_button = ui.button("Generate Plan")
         stop_button = ui.button("Stop", icon="stop", color="negative")
         stop_button.visible = False
 
     scan_mode_hint = ui.label(scan_mode_hints["all"]).classes("text-xs text-gray-500")
+    if track_options_error:
+        track_picker_error = ui.label(
+            f"Couldn't load your track list at startup ({track_options_error}) - "
+            f"make sure Lexicon is open, then restart Track Record to use this."
+        ).classes("text-xs text-red-600")
+        track_picker_error.visible = False
 
     def on_scan_mode_change(e) -> None:
         scan_mode_hint.set_text(scan_mode_hints[e.value])
+        limit_input.visible = e.value != "track"
+        track_picker.visible = e.value == "track" and not track_options_error
+        if track_options_error:
+            track_picker_error.visible = e.value == "track"
         scan_progress_caption.refresh()
 
     scan_mode_select.on_value_change(on_scan_mode_change)
@@ -389,9 +442,20 @@ def build_ui() -> None:
         }
     source_row.bind_visibility_from(genre_enabled_checkbox, "value")
 
-    def get_library_snapshot() -> list[dict]:
-        if state["library_snapshot"] is None:
-            state["library_snapshot"] = lexicon_client.fetch_library()
+    def get_library_snapshot() -> list[dict] | None:
+        """None (rather than raising) if Lexicon isn't reachable right
+        now - caught directly: this used to call fetch_library()
+        unwrapped, and since scan_progress_caption() runs it on every
+        initial render (default scan mode is "all"), launching the app
+        before Lexicon was open crashed build_ui() itself, not just
+        whatever action actually needed the connection. Cached either
+        way, success or failure, so a still-unreachable Lexicon doesn't
+        retry (and re-fail) on every single refresh."""
+        if state["library_snapshot"] is None and not state.get("library_snapshot_error"):
+            try:
+                state["library_snapshot"] = lexicon_client.fetch_library()
+            except Exception as e:
+                state["library_snapshot_error"] = str(e)
         return state["library_snapshot"]
 
     async def reset_scan_progress(action: str, label: str) -> None:
@@ -431,6 +495,11 @@ def build_ui() -> None:
         if not any(enabled for _, _, enabled in actions):
             return
         snapshot = get_library_snapshot()
+        if snapshot is None:
+            ui.label(
+                f"Couldn't reach Lexicon to check scan progress ({state['library_snapshot_error']})"
+            ).classes("text-xs text-red-600")
+            return
         total = len(snapshot)
         for action, label, enabled in actions:
             if not enabled:
@@ -912,6 +981,10 @@ def build_ui() -> None:
             )
             return
 
+        if scan_mode_select.value == "track" and track_picker.value is None:
+            notify("Search for and pick a track first", type="warning")
+            return
+
         checked = sum(1 for v in state["checked"].values() if v)
         if checked:
             with ui.dialog() as confirm_dialog, ui.card():
@@ -960,8 +1033,17 @@ def build_ui() -> None:
                 result=result,
             )
 
-        limit = int(limit_input.value) if limit_input.value else None
         scan_mode = scan_mode_select.value
+        # "track" is a GUI-only concept - plan.py/mood_plan.py's own
+        # scan_mode only ever means which *pool* to fetch from
+        # ("all"/"recent"/"incoming"); a single track is that same
+        # "all" pool narrowed down by the existing track_id param
+        # (already built for the CLI's own --track-id - see plan.py's
+        # docstring), not a fourth pool of its own. limit doesn't mean
+        # anything for one already-identified track either.
+        picked_track_id = track_picker.value if scan_mode == "track" else None
+        backend_scan_mode = "all" if scan_mode == "track" else scan_mode
+        limit = int(limit_input.value) if limit_input.value and scan_mode != "track" else None
 
         new_genre_plan = state.get("genre_plan")
         new_mood_plan = state.get("mood_plan")
@@ -971,7 +1053,7 @@ def build_ui() -> None:
         # Only "Whole library" has a saved position to resume from at
         # all (see scan_progress.py) - None here means "start from the
         # beginning", same as before this existed, for "recent"/
-        # "incoming" or a first-ever whole-library run.
+        # "incoming"/"track" or a first-ever whole-library run.
         resuming = scan_mode == "all"
 
         if include_genre:
@@ -980,7 +1062,8 @@ def build_ui() -> None:
                 new_genre_plan = await run.io_bound(
                     genre_plan_module.generate_plan,
                     limit=limit,
-                    scan_mode=scan_mode,
+                    scan_mode=backend_scan_mode,
+                    track_id=picked_track_id,
                     enabled_sources=enabled_sources,
                     on_track_planned=on_track_planned,
                     should_stop=stop_event.is_set,
@@ -1010,7 +1093,8 @@ def build_ui() -> None:
                     new_mood_plan = await run.io_bound(
                         mood_plan.generate_plan,
                         limit=limit,
-                        scan_mode=scan_mode,
+                        scan_mode=backend_scan_mode,
+                        track_id=picked_track_id,
                         on_track_planned=on_track_planned,
                         should_stop=stop_event.is_set,
                         since_track_id=scan_progress.get_cursor("mood") if resuming else None,

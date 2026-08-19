@@ -103,14 +103,28 @@ back only what's approved.
 
 ### Choosing what to scan
 
-A plan generation covers one of three pools, picked from the review
+A plan generation covers one of four pools, picked from the review
 screen itself - no terminal flags: the **whole library** (optionally
 capped to the first N tracks), the **N most recently added** tracks,
-or everything currently in Lexicon's **Incoming** bin. A full-library
-run is slow (rate-limited API calls plus local audio inference per
-track), so a **Stop** button aborts mid-run - it takes effect after
-the current track finishes, not instantly, and keeps whatever was
-already planned as a normal, smaller plan rather than discarding it.
+everything currently in Lexicon's **Incoming** bin, or a **single
+track** searched by artist/title. A full-library run is slow
+(rate-limited API calls plus local audio inference per track), so a
+**Stop** button aborts mid-run - it takes effect after the current
+track finishes, not instantly, and keeps whatever was already planned
+as a normal, smaller plan rather than discarding it.
+
+**Single track** is for spot-checking one song - re-running a track
+after a scoring change, or just seeing what a specific edit gets
+proposed without waiting on a real scan. The searchable picker is
+built from the same `track_id` parameter `plan.py`/`mood_plan.py`'s
+own CLIs already exposed via `--track-id`; the GUI's only real
+addition is resolving an artist/title search into that id, since a DJ
+thinks in terms of "artist - title," not Lexicon's internal numeric
+ids. Different DJ edits of the same song are still separate options -
+edit/version info (e.g. "(MM Edit)") already lives in Lexicon's own
+title field, so they read as distinct entries with no extra handling
+needed. Doesn't have or need a scan-progress position, same as
+"recent"/"incoming."
 
 A capped **whole-library** run remembers where it left off
 (`scan_progress.py`), separately per action - a second 100-track run
@@ -403,9 +417,10 @@ scale so far.
   resolves candidates against what already exists, writes an
   auto-include / needs-review / propose-a-new-tag plan. Callable from
   the CLI or directly (used by each action's GUI); a scan-mode picker
-  chooses whole library / most recently added / Incoming, with an
-  optional Stop mid-run. Genre/Subgenre also has a per-source toggle;
-  Mood/Theme doesn't need one yet, with only one source to toggle.
+  chooses whole library / most recently added / Incoming / a single
+  track searched by artist-title, with an optional Stop mid-run.
+  Genre/Subgenre also has a per-source toggle; Mood/Theme doesn't need
+  one yet, with only one source to toggle.
 - **Review UI** (`review_ui.py`, one NiceGUI native window -
   `python review_ui.py` is the only command either action needs): the
   whole workflow lives here - one "Generate Plan" with checkboxes for

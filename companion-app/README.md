@@ -44,7 +44,10 @@ Nothing else needs the terminal, and generating a plan never writes
 anything - "Apply Tags" is the only action that does:
 
 1. Pick what to scan - whole library (optionally capped to the first
-   N tracks), the N most recently added, or everything in Incoming -
+   N tracks), the N most recently added, everything in Incoming, or a
+   single track (search by artist/title - each DJ edit of a song is
+   its own separate entry, since edit info already lives in the title
+   itself) for spot-checking one song without waiting on a real scan -
    and which action(s) to include via the "Tag with:" checkboxes
    (Genre/Subgenre, Mood/Theme, or both; both on by default). With
    Genre/Subgenre checked, a checkbox per fetch source (Discogs, and
