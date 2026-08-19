@@ -89,11 +89,17 @@ anything - "Apply Tags" is the only action that does:
    across the *whole* plan, not just the visible page, so checking a
    tag on page 1 and a different one on page 3 both make it into the
    same Apply Tags click. Different DJ edits of the same song (e.g.
-   "(Intro Clean)" / "(Quick Hit Clean)") are detected automatically -
-   a "Copy checked genre tags to '\<sibling title>'" button appears next
-   to a track's Genre/Subgenre "select all" when one's found. It's a
-   one-time copy, not a live link: click it after checking tags on one
-   edit to check the same tags on the named sibling(s), only where they
+   "(Intro Clean)" / "(Quick Hit Clean)") are detected automatically by
+   artist + title, ignoring edit/version suffixes and matching on
+   primary artist so a feature credit folded into one edit's Artist
+   field doesn't break the match. A remix only groups with other DJ
+   edits of that *same* remix, never with the plain version or a
+   different remix of the song - a remix can genuinely be a different
+   genre than the original. A "Copy checked genre tags from
+   '\<sibling title>'" button appears next to a track's Genre/Subgenre
+   "select all" when one's found. It's a one-time copy, not a live
+   link: finish tagging one edit, move on to its sibling, and click the
+   button there to pull whatever's checked over, only where this track
    already proposed that exact tag too - nothing stays bound
    afterward, so unchecking something later never cascades. Mood/Theme
    has no such button, since real testing found mood genuinely differs

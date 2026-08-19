@@ -77,20 +77,25 @@ Layout:
 - Different DJ edits of the same song (e.g. "Promiscuous (Intro
   Clean)" / "Promiscuous (Quick Hit Clean)") show up as separate
   tracks - separate audio files, separate track_ids in Lexicon
-  (detected via find_sibling_edits()). A track with a detected sibling
-  gets a "Copy checked genre tags to '<sibling title>'" button next to
-  its Genre/Subgenre "select all": check whatever tags you agree with
-  on one edit, click it, and the same tags get checked on the named
-  sibling(s) too - but only where that sibling's own audio/catalog
-  lookup already proposed that exact tag as a candidate, never
-  inventing one it didn't earn. A one-time copy, not a live link -
-  nothing stays bound afterward, so unchecking something on either
-  track later never cascades anywhere. (An earlier version auto-synced
-  every check bidirectionally and live; dropped after real use turned
-  up two problems with it - no visibility into which edits a track was
-  actually linked to beyond a bare count, and no way to let one edit
-  genuinely differ without the live link fighting you. The button
-  names the sibling explicitly and never re-asserts itself, which
+  (detected via find_sibling_edits(); a remix only groups with other
+  DJ edits of that *same* remix, never with the plain version or a
+  different remix of the same song - see _remix_identity()). A
+  track with a detected sibling gets a "Copy checked genre tags from
+  '<sibling title>'" button next to its Genre/Subgenre "select all":
+  work through one edit fully, move on to its sibling, and pull
+  whatever's already checked over from there in one click - but only
+  where this track's own audio/catalog lookup also proposed that exact
+  tag as a candidate, never inventing one it didn't earn. A one-time
+  copy, not a live link - nothing stays bound afterward, so unchecking
+  something on either track later never cascades anywhere. (An earlier
+  version auto-synced every check bidirectionally and live; dropped
+  after real use turned up two problems with it - no visibility into
+  which edits a track was actually linked to beyond a bare count, and
+  no way to let one edit genuinely differ without the live link
+  fighting you. A later version pushed a "copy to" from the edit being
+  worked on - dropped in turn because it meant scrolling back up to an
+  earlier track to push forward, rather than working a track and
+  reaching sideways to whichever sibling was already done. Pulling
   fixes both.) Mood/Theme has no such button at all: real testing on
   two edits of the same song found genre stayed consistent between
   them while mood-adjacent tags genuinely differed (a spoken intro on
@@ -174,34 +179,75 @@ def group_by_track(genre_plan: dict | None, mood_plan_: dict | None) -> dict:
 # title.
 _EDIT_SUFFIX_RE = re.compile(r"\s*[\(\[][^)\]]*[)\]]")
 
+# Same ARTIST_SPLIT pattern discogs.py/musicbrainz.py already use to
+# isolate a primary artist credit before searching an external catalog
+# - reused here because a DJ's own library isn't consistent about it
+# either: two edits of the same song can genuinely have the Artist
+# field spelled differently ("Deee-Lite" on one edit, "Deee-Lite Ft.
+# Q-Tip" on another because that edit's tags happened to be entered
+# with the feature credit folded in). Matching on primary artist alone
+# catches that; matching on the raw field, as this used to, silently
+# missed it - real library data confirmed this exact case.
+_ARTIST_SPLIT = re.compile(
+    r"\s+(?:&|x|and|with|feat\.?|ft\.?|featuring|vs\.?|f/)\s+"
+    r"|,(?!\s*(?:inc|ltd|llc|co|jr|sr)\b)\s*"
+    r"|\s+/\s+", re.I,
+)
 
-def _song_key(artist: str | None, title: str | None) -> tuple[str, str]:
-    """Case-insensitive (artist, edit-suffix-stripped title) - the
-    grouping key find_sibling_edits() below uses to treat "Promiscuous
-    (Intro Clean)" and "Promiscuous (Quick Hit Clean)" as edits of one
-    song. No artist-splitting the way discogs.py/musicbrainz.py do
-    (stripping a featured-artist credit down to the primary artist) -
-    that's for matching against an external catalog that might index
-    under just the primary artist; two edits of the same song already
-    sitting in this DJ's own library share the exact same Artist field,
-    so a plain case-insensitive match is enough here."""
+
+def _primary_artist(artist: str) -> str:
+    primary = _ARTIST_SPLIT.split(artist)[0].strip()
+    return primary or artist
+
+
+# A remix shares its title with the song it remixes but not its sound -
+# it's a different producer's reinterpretation, often landing in a
+# different genre entirely (a house remix of a rock song is still,
+# genre-wise, a house record). So a remix and the plain edit of the
+# same song shouldn't find each other as siblings, and neither should
+# two *different* remixes of it - but a DJ can absolutely have two
+# separate DJ edits of the *same* remix (e.g. an intro edit and a
+# quick-hit edit both built from the Gigamesh Remix), and those two
+# genuinely are siblings of each other, same as any other pair of
+# edits. So "which remix, if any" needs to be part of what makes two
+# tracks a match, not a reason to disqualify a track from matching
+# altogether. Captures the parenthetical/bracketed group containing
+# "remix" itself (e.g. "Gigamesh Remix" out of "(Gigamesh Remix)") -
+# None for a track that isn't a remix at all.
+_REMIX_NAME_RE = re.compile(r"[\(\[]([^)\]]*\bremix\b[^)\]]*)[)\]]", re.I)
+
+
+def _remix_identity(title: str | None) -> str | None:
+    match = _REMIX_NAME_RE.search(title or "")
+    return match.group(1).strip().lower() if match else None
+
+
+def _song_key(artist: str | None, title: str | None) -> tuple[str, str, str | None]:
+    """Case-insensitive (primary artist, edit-suffix-stripped title,
+    remix identity) - the grouping key find_sibling_edits() below uses
+    to treat "Promiscuous (Intro Clean)" and "Promiscuous (Quick Hit
+    Clean)" as edits of one song, while keeping a remix's own edits
+    grouped only with each other (see _remix_identity)."""
     stripped_title = _EDIT_SUFFIX_RE.sub("", title or "").strip().lower()
     return (
-        (artist or "").strip().lower(),
+        _primary_artist((artist or "").strip()).lower(),
         stripped_title or (title or "").strip().lower(),  # don't key on "" if stripping ate the whole title
+        _remix_identity(title),
     )
 
 
 def find_sibling_edits(tracks: dict) -> dict[int, list[int]]:
     """Return {track_id: [other track_id, ...]} for every track that
-    shares its (artist, edit-suffix-stripped title) key with at least
-    one other track currently in the plan - i.e. tracks this DJ's own
-    library holds as separate DJ edits of the same underlying song.
-    Tracks with no such sibling don't appear in the returned dict at
-    all, so `track_id in find_sibling_edits(tracks)` doubles as an
-    is-this-track-part-of-a-group check.
+    shares its (primary artist, edit-suffix-stripped title, remix
+    identity) key with at least one other track currently in the plan -
+    i.e. tracks this DJ's own library holds as separate DJ edits of the
+    same underlying song (and, if it's a remix, the same remix - a
+    remix never groups with the plain version or a different remix of
+    the same song). Tracks with no such sibling don't appear in the
+    returned dict at all, so `track_id in find_sibling_edits(tracks)`
+    doubles as an is-this-track-part-of-a-group check.
     """
-    groups: dict[tuple[str, str], list[int]] = {}
+    groups: dict[tuple[str, str, str | None], list[int]] = {}
     for track_id, info in tracks.items():
         groups.setdefault(_song_key(info["artist"], info["title"]), []).append(track_id)
     return {
@@ -618,11 +664,15 @@ def build_ui() -> None:
         # genuinely differ from its sibling without the live link
         # fighting you. render_rows() below instead shows each
         # sibling's real title and offers a one-time "Copy checked
-        # genre tags to..." action - copies whatever's checked right
-        # now onto the sibling(s) once, same "only where the sibling
-        # already proposed it as a candidate" rule as before, but
-        # nothing stays linked afterward. Unchecking something later
-        # never cascades anywhere.
+        # genre tags from..." action - pulls whatever's already checked
+        # on the named sibling into this track once, same "only where
+        # this track's own lookup also proposed it as a candidate" rule
+        # as before, but nothing stays linked afterward. Unchecking
+        # something later never cascades anywhere. Pulling rather than
+        # pushing matches how a DJ actually works the list: finish one
+        # edit, move to the next one (its sibling, right below it once
+        # sorted), and grab what's already settled instead of scrolling
+        # back up to the edit worked a minute ago.
         siblings_by_track = find_sibling_edits(tracks)
 
         def toggle_all(e) -> None:
@@ -707,52 +757,59 @@ def build_ui() -> None:
                 ui.checkbox(select_all_label, value=False, on_change=toggle_sub).props("dense")
 
                 sibling_ids = siblings_by_track.get(track_id, ()) if kind == "genre" else ()
-                if sibling_ids:
-                    sibling_titles = [tracks[sid]["title"] for sid in sibling_ids]
-                    btn_label = (
-                        f"Copy checked genre tags to \"{sibling_titles[0]}\""
-                        if len(sibling_ids) == 1
-                        else f"Copy checked genre tags to {len(sibling_ids)} sibling edits"
+                # One button per sibling, each pulling from that one
+                # sibling specifically - not a single button pulling
+                # from all of them merged together, so which edit a
+                # given check actually came from stays visible (the
+                # button names it) rather than blurring into "some
+                # sibling, somewhere." Almost always exactly one sibling
+                # in practice; this only matters when a song has three+
+                # DJ edits in the library at once.
+                for sibling_id in sibling_ids:
+                    sibling_title = tracks[sibling_id]["title"]
+                    sibling_has_checked = any(
+                        state["checked"].get((sibling_id, "genre", row["tag"]))
+                        for row in tracks[sibling_id]["rows"] if row["kind"] == "genre"
                     )
 
-                    def copy_to_siblings(sibling_ids=sibling_ids, track_id=track_id) -> None:
-                        checked_tags = [
-                            row["tag"] for row in rows
-                            if state["checked"].get((track_id, "genre", row["tag"]))
+                    def copy_from_sibling(sibling_id=sibling_id, sibling_title=sibling_title, track_id=track_id) -> None:
+                        donor_checked_tags = [
+                            row["tag"] for row in tracks[sibling_id]["rows"]
+                            if row["kind"] == "genre" and state["checked"].get((sibling_id, "genre", row["tag"]))
                         ]
-                        if not checked_tags:
-                            notify("No genre tags checked on this track yet - check some, then copy", type="warning")
+                        if not donor_checked_tags:
+                            notify(
+                                f"\"{sibling_title}\" has no genre tags checked yet - check some there first",
+                                type="warning",
+                            )
                             return
                         copied = 0
-                        for sibling_id in sibling_ids:
-                            for tag in checked_tags:
-                                sibling_key = (sibling_id, "genre", tag)
-                                # Only where the sibling's own audio/catalog
-                                # lookup already proposed this exact tag as a
-                                # candidate - never invents one it didn't
-                                # earn. A one-time copy, not a live link:
-                                # nothing here keeps watching for future
-                                # changes on either track.
-                                if sibling_key in valid_keys and not state["checked"].get(sibling_key):
-                                    state["checked"][sibling_key] = True
-                                    copied += 1
+                        for tag in donor_checked_tags:
+                            key = (track_id, "genre", tag)
+                            # Only where this track's own audio/catalog
+                            # lookup already proposed this exact tag as a
+                            # candidate - never invents one it didn't
+                            # earn. A one-time copy, not a live link:
+                            # nothing here keeps watching for future
+                            # changes on either track.
+                            if key in valid_keys and not state["checked"].get(key):
+                                state["checked"][key] = True
+                                copied += 1
                         if copied:
-                            notify(
-                                f"Copied {len(checked_tags)} checked tag(s) to {len(sibling_ids)} "
-                                f"sibling edit(s) - {copied} new check(s)",
-                                type="positive",
-                            )
+                            notify(f"Copied {copied} genre tag(s) from \"{sibling_title}\"", type="positive")
                         else:
                             notify(
-                                "Nothing new to copy - sibling edit(s) either already have these "
-                                "tags checked or never proposed them as candidates",
+                                f"Nothing new to copy from \"{sibling_title}\" - this track either already "
+                                "has those tags checked or never proposed them as candidates",
                                 type="warning",
                             )
                         review_section.refresh()
 
-                    copy_btn = ui.button(btn_label, on_click=copy_to_siblings).props("outline dense size=sm")
-                    if len(sibling_ids) > 1:
-                        copy_btn.tooltip(", ".join(sibling_titles))
+                    copy_btn = ui.button(
+                        f"Copy checked genre tags from \"{sibling_title}\"", on_click=copy_from_sibling
+                    ).props("outline dense size=sm")
+                    if not sibling_has_checked:
+                        copy_btn.tooltip(f"\"{sibling_title}\" has no genre tags checked yet")
 
             for row in rows:
                 is_auto = row.get("is_auto", False)

@@ -336,22 +336,34 @@ click - then reports one combined result.
 
 Different DJ edits of the same song ("Promiscuous (Intro Clean)" /
 "Promiscuous (Quick Hit Clean)") show up as separate tracks - separate
-audio files, separate Lexicon track_ids, detected automatically. A
-track with a detected sibling gets a "Copy checked genre tags to
+audio files, separate Lexicon track_ids, detected automatically by
+artist + title (matched on primary artist, so "Deee-Lite" and
+"Deee-Lite Ft. Q-Tip" on two edits of the same song still find each
+other, and edit/version suffixes in parentheses or brackets are
+ignored for the match). A remix only groups with other DJ edits of
+that *same* remix, never with the plain version of the song or a
+different remix of it - a remix is often a different genre entirely
+from what it remixes, so a genre tag that fits one has no business
+being offered as a one-click copy onto the other, while two edits
+built from the identical remix genuinely do share genre. A track with
+a detected sibling gets a "Copy checked genre tags from
 '\<sibling title>'" button next to its Genre/Subgenre "select all" -
-check whatever tags you agree with, click it, and the same tags get
-checked on the named sibling(s) too, but only where that sibling's own
-audio/catalog lookup already proposed that exact tag as a candidate,
+work through one edit, move on to its sibling, and pull whatever's
+already checked there in one click, but only where this track's own
+audio/catalog lookup also proposed that exact tag as a candidate,
 never inventing one it didn't earn. A one-time copy, not a live link -
 nothing stays bound afterward, so unchecking something on either track
 later never cascades anywhere, and the button always names exactly
-which edit(s) it's about to touch. (An earlier version auto-synced
-every check bidirectionally and live between siblings; dropped after
-real use found two problems with it - no visibility into which edits a
+which edit it's pulling from. (An earlier version auto-synced every
+check bidirectionally and live between siblings; dropped after real
+use found two problems with it - no visibility into which edits a
 track was actually linked to beyond a bare count, and no way to let
-one edit genuinely differ without the live link fighting back. Naming
-the sibling explicitly and making the copy a single deliberate action
-fixes both, for less code than the live-binding version needed.)
+one edit genuinely differ without the live link fighting back. A later
+version pushed checked tags forward onto a sibling instead, which
+meant scrolling back up to an earlier edit to push from it rather than
+working a track and pulling sideways from whichever sibling was
+already done. Naming the sibling explicitly and pulling from it fixes
+all of that, for less code than the live-binding version needed.)
 Mood/Theme has no such button at all: testing on two real edits of the
 same song found genre stayed consistent between them while
 mood-adjacent tags genuinely differed (a spoken intro on one edit
