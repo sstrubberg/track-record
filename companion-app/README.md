@@ -36,8 +36,13 @@ never gets committed:
 ## Review UI (Genre/Subgenre and Mood/Theme)
 
 ```
-python review_ui.py
+python track_record.py
 ```
+
+(a thin, brand-named entry point - `track_record.py` just calls
+`review_ui.main()`; `review_ui.py` is the actual screen, named for what
+it does like every other module here, since a DJ only ever sees the
+command and the window title, never the filename)
 
 One native window, one command, one "Generate Plan" for both actions.
 Nothing else needs the terminal, and generating a plan never writes

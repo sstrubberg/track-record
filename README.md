@@ -43,8 +43,8 @@ screen:
    pip install -r requirements.txt
    cp .env.example .env   # fill in DISCOGS_TOKEN - see companion-app/README.md
    ```
-3. **Run it**: `python review_ui.py` - one native window, one command,
-   covers Genre/Subgenre and Mood/Theme both.
+3. **Run it**: `python track_record.py` - one native window, one
+   command, covers Genre/Subgenre and Mood/Theme both.
 
 See [companion-app/README.md](companion-app/README.md) for the full
 walkthrough - what each part of the screen does, the Settings dialog,
@@ -57,9 +57,10 @@ Lexicon plugins run in a sandboxed JS environment - no `require()`, no
 spawning processes, no native modules - so Essentia/discogs-maest could
 never run inside one directly. The companion app sidesteps that by
 being a separate local Python process a DJ runs directly
-(`python review_ui.py`), talking to Lexicon purely over its own Local
-API (see "Getting started" above for turning that on) - reading the
-library, writing tags - with nothing on the Lexicon side involved.
+(`python track_record.py`, a thin entry point over review_ui.py's
+actual screen), talking to Lexicon purely over its own Local API (see
+"Getting started" above for turning that on) - reading the library,
+writing tags - with nothing on the Lexicon side involved.
 
 ```
 track-record/
@@ -88,6 +89,8 @@ track-record/
     ├── review_ui.py                # NiceGUI screen for BOTH actions, one window,
     │                                #   one Generate Plan, checkboxes choose which
     │                                #   action(s) to include, plus a Settings dialog
+    ├── track_record.py             # `python track_record.py` - thin, brand-named
+    │                                #   entry point that just calls review_ui.main()
     └── config/
         ├── source_weights.yaml    # Genre/Subgenre tuning
         ├── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file
@@ -434,7 +437,7 @@ scale so far.
   Genre/Subgenre also has a per-source toggle; Mood/Theme doesn't need
   one yet, with only one source to toggle.
 - **Review UI** (`review_ui.py`, one NiceGUI native window -
-  `python review_ui.py` is the only command either action needs): the
+  `python track_record.py` is the only command either action needs): the
   whole workflow lives here - one "Generate Plan" with checkboxes for
   which action(s) to include, live per-track progress across both
   phases (never writes anything), each track's candidates split into
