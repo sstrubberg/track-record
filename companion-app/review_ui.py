@@ -1431,23 +1431,55 @@ def build_ui() -> None:
                     "index of what charted when, entirely offline once built. "
                     "\"Update Chart Cache\" re-ingests the bulk chart datasets "
                     "(seconds). \"Fetch from Billboard.com\" scrapes the charts "
-                    "those datasets don't cover directly from the site - can "
-                    "take hours, so it's confirmed first."
+                    "those datasets don't cover directly from the site - shows "
+                    "a real time estimate before it starts, since it's "
+                    "confirmed first."
                 ).classes("text-xs text-gray-500 mb-2")
 
                 chart_cache_status = ui.label("").classes("text-xs text-gray-500")
 
+                def _fmt_estimate(est: dict) -> str:
+                    mins = est["estimated_seconds"] / 60
+                    duration = f"{mins:.0f} min" if mins < 90 else f"{mins / 60:.1f} hr"
+                    return f"{est['total_requests']} request(s) across {est['slugs']} chart(s), ~{duration}"
+
                 async def refresh_chart_cache(fetch: bool) -> None:
+                    full_history = False
                     if fetch:
-                        with ui.dialog() as confirm_dialog, ui.card():
-                            ui.label(
-                                "Scrape Billboard.com directly? Only charts the "
-                                "bulk datasets don't already cover run at all "
-                                "(see charts/billboard_tag.py's own "
-                                "DATASET_SOURCES) - this can still take hours. "
-                                "Runs in the background; Track Record stays "
-                                "usable while it does."
+                        chart_cache_status.text = "checking how much is actually left to fetch..."
+                        try:
+                            recent_est, full_est = await run.io_bound(
+                                lambda: (
+                                    charts_plan_module.estimate_fetch(),
+                                    charts_plan_module.estimate_fetch(full_history=True),
+                                )
                             )
+                        except Exception as e:
+                            chart_cache_status.text = ""
+                            notify(f"Couldn't estimate fetch size: {e}", type="negative")
+                            return
+                        chart_cache_status.text = ""
+
+                        with ui.dialog() as confirm_dialog, ui.card():
+                            ui.label("Scrape Billboard.com directly?")
+                            estimate_label = ui.label(_fmt_estimate(recent_est)).classes(
+                                "text-sm text-gray-600 dark:text-gray-400"
+                            )
+                            full_history_checkbox = ui.checkbox(
+                                "Full historical re-fetch instead (rare - only for a "
+                                "brand-new chart that's never been fetched at all)"
+                            ).props("dense")
+
+                            def _on_toggle(e) -> None:
+                                estimate_label.text = _fmt_estimate(full_est if e.value else recent_est)
+
+                            full_history_checkbox.on_value_change(_on_toggle)
+                            ui.label(
+                                "Only charts the bulk datasets don't already cover run "
+                                "at all (see charts/billboard_tag.py's own "
+                                "DATASET_SOURCES). Runs in the background; Track Record "
+                                "stays usable while it does."
+                            ).classes("text-xs text-gray-500")
                             with ui.row().classes("w-full justify-end gap-2 mt-2"):
                                 ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
                                 ui.button(
@@ -1456,12 +1488,14 @@ def build_ui() -> None:
                                 )
                         if await confirm_dialog != "continue":
                             return
+                        full_history = full_history_checkbox.value
+
                     chart_cache_status.text = (
                         "scraping Billboard.com - this can take a while..." if fetch
                         else "loading bulk chart datasets..."
                     )
                     try:
-                        await run.io_bound(charts_plan_module.refresh_cache, fetch)
+                        await run.io_bound(charts_plan_module.refresh_cache, fetch, full_history)
                     except Exception as e:
                         chart_cache_status.text = ""
                         notify(f"Chart cache refresh failed: {e}", type="negative")

@@ -316,13 +316,34 @@ card (or `python billboard_tag.py load`/`fetch` from a terminal) is
 what actually builds and refreshes it; matching a track against it
 touches no network at all. "Update Chart Cache" (`load`) re-ingests
 bulk chart datasets in seconds; "Fetch from Billboard.com" scrapes the
-charts those datasets don't cover directly from the site and can take
-hours, so it's confirmed before it starts. This is also why Charts
-never keeps a resumable whole-library scan position the way
-Genre/Subgenre and Mood/Theme do (see "Choosing what to scan" above) -
-matching against an already-loaded cache is an in-memory lookup, no
-per-track network call or audio inference, so redoing a whole-library
-run costs nothing worth avoiding a saved position for.
+charts those datasets don't cover directly from the site.
+
+Before confirming a fetch, Settings shows a real estimate
+(`charts_plan.py`'s `estimate_fetch()`) instead of a blanket "can take
+hours" warning - genuinely important, because of a real quirk in
+billboard_tag.py's own progress-tracking (untouched, so worked around
+here rather than fixed there): `week_dates()` always counts backward
+from *today* in fixed steps, with no awareness of when a previous
+fetch actually ran, so unless today happens to land on an exact
+step-multiple of the last run, none of the freshly generated dates
+line up with what `billboard_cache.progress.json` already recorded as
+done - confirmed directly, a fetch four weeks after a real one showed
+*zero* overlap, meaning it would've treated the entire 1958-forward
+history as still needed (measured: 30,050 requests, ~28 hours) despite
+almost all of it already being cached. The default estimate instead
+caps the range to the last two years - any real new chart data is
+recent by definition, so this sidesteps the mismatch for a fraction of
+the cost (measured the same day: 990 requests, ~1 hour) - with a "Full
+historical re-fetch instead" checkbox for the rare case that actually
+needs the full range (a brand-new chart just added to `chart_map.json`
+that's never been fetched at all).
+
+This is also why Charts never keeps a resumable whole-library scan
+position the way Genre/Subgenre and Mood/Theme do (see "Choosing what
+to scan" above) - matching against an already-loaded cache is an
+in-memory lookup, no per-track network call or audio inference, so
+redoing a whole-library run costs nothing worth avoiding a saved
+position for.
 
 ### Scoring
 

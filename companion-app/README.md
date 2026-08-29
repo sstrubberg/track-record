@@ -174,8 +174,18 @@ and remains fully supported for anything this dialog doesn't expose.
 The same dialog also has a **Chart Cache** card - "Update Chart Cache"
 re-ingests billboard-tag's bulk chart datasets (seconds); "Fetch from
 Billboard.com" scrapes the charts those datasets don't cover directly
-from the site (can take hours, confirmed first). See "Setting up
-Charts" below for the one-time setup this depends on.
+from the site. Confirming a fetch shows a real time estimate first -
+by default it only checks the last two years (a routine catch-up run
+this often finds real new chart weeks recent anyway), with a "Full
+historical re-fetch instead" option for the rare case that actually
+needs the full 1958-forward range (e.g. right after adding a brand-new
+chart to `chart_map.json` that's never been fetched at all - see
+`charts_plan.py`'s `estimate_fetch()`/`RECENT_FETCH_YEARS_BACK` for
+the full reasoning, including a real quirk in billboard_tag.py's own
+progress-tracking: the full range doesn't actually get cheaper just
+because it was already fetched once before, since its own resume
+logic is sensitive to which exact day you happen to run it on).
+See "Setting up Charts" below for the one-time setup this depends on.
 
 ## Setting up Charts
 
@@ -211,7 +221,12 @@ different library, both one-time, both from inside `charts/`:
    `load` alone already covers seven major charts going back decades;
    `fetch` only gap-fills what `load` doesn't. Neither needs to be
    re-run often - Billboard's charted history doesn't change underfoot
-   the way, say, an audio model version does.
+   the way, say, an audio model version does. When you do want fresh
+   weeks, prefer Settings' "Fetch from Billboard.com" over running
+   `python billboard_tag.py fetch` bare from a terminal - the Settings
+   button caps the date range to the last two years by default
+   (see above), while the bare CLI command always attempts the full
+   1958-forward range.
 
 ## Trying a fetch source directly
 

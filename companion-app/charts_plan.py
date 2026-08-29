@@ -57,7 +57,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from rapidfuzz import fuzz, process
@@ -418,13 +418,78 @@ def generate_plan(
     return plan
 
 
-def refresh_cache(fetch: bool = False, on_status=None) -> None:
+# How far back a non-full-history fetch checks. Exists because of a
+# real quirk in billboard_tag.py's own week_dates() (untouched, so
+# worked around here rather than fixed there): it always generates its
+# list of weeks-to-check by counting backward from *today* in fixed
+# STEP_WEEKS steps, with no awareness of when a previous fetch actually
+# ran. Unless today happens to be an exact STEP_WEEKS-multiple away
+# from the last run, none of the newly generated dates line up with
+# what billboard_cache.progress.json already has recorded as done -
+# confirmed directly: a fetch four weeks after a real one, when the
+# cadence didn't land exactly on a 2-week boundary, showed literally
+# zero overlap between the two date lists, meaning phase_fetch would
+# treat the entire 1958-forward history as still needed every time,
+# regardless of how recently it last ran. Capping the start year to
+# recent history sidesteps the mismatch (any real new chart weeks are
+# recent by definition) for a small fraction of a full pass - measured
+# directly: full history 30,050 requests/~28 hours vs. 2-years-back
+# 626 requests/~35 min, on this project's own cache.
+RECENT_FETCH_YEARS_BACK = 2
+
+
+def _fetch_start_year(bt, full_history: bool) -> int:
+    return bt.START_YEAR if full_history else date.today().year - RECENT_FETCH_YEARS_BACK
+
+
+def estimate_fetch(only_slugs: str | None = None, full_history: bool = False) -> dict:
+    """Read-only preview of what refresh_cache(fetch=True, ...) would
+    actually have to do right now - no network calls, no confirm
+    needed to run this part. Mirrors phase_fetch's own
+    weeks-still-needed computation (charts/billboard_tag.py:704-717)
+    by calling its real functions (week_dates, _load_progress) rather
+    than reimplementing the logic by hand - just stops short of
+    actually fetching anything.
+
+    full_history=False (the default) only checks back to
+    RECENT_FETCH_YEARS_BACK years ago - see that constant's own comment
+    for why. full_history=True checks the real 1958-forward range, a
+    full cold-start-equivalent pass - only actually worth it right
+    after adding a brand-new chart to chart_map.json that's never been
+    fetched at all, not for a routine "it's been a few weeks" update.
+
+    Returns {"slugs": int, "total_requests": int, "estimated_seconds": float}.
+    """
+    bt = _import_billboard_tag()
+    progress = bt._load_progress(bt.CACHE)
+    start_year = _fetch_start_year(bt, full_history)
+
+    if only_slugs:
+        wanted = {x.strip() for x in only_slugs.split(",")}
+        slugs = sorted(wanted)
+    else:
+        slugs = sorted(set(bt.CHART_MAP.values()) - set(bt.DATASET_SOURCES))
+
+    def weeks_still_needed(slug):
+        step = bt.STEP_WEEKS_BY_SLUG.get(slug, bt.STEP_WEEKS)
+        weeks = bt.week_dates(start_year, step)
+        done = progress.get(slug, set())
+        return sum(1 for d in weeks if d.isoformat() not in done)
+
+    total = sum(weeks_still_needed(slug) for slug in slugs)
+    seconds = total * bt.SECONDS_PER_WEEK / max(1, bt.WORKERS * 0.55)
+    return {"slugs": len(slugs), "total_requests": total, "estimated_seconds": seconds}
+
+
+def refresh_cache(fetch: bool = False, full_history: bool = False, on_status=None) -> None:
     """What Settings' "Update Chart Cache" button calls via
     run.io_bound. `fetch=False` (the default) runs billboard_tag.py's
     own phase_load - seconds, dataset-backed charts only. `fetch=True`
-    instead runs phase_fetch - a real scrape of Billboard.com directly,
-    which can take hours; review_ui.py only ever calls this after an
-    explicit confirm, never on its own.
+    instead runs phase_fetch - a real scrape of Billboard.com directly.
+    `full_history` (only meaningful with fetch=True) picks how far back
+    it checks - see estimate_fetch()'s own docstring; review_ui.py
+    shows both estimates and only ever calls this after an explicit
+    confirm, never on its own.
 
     Temporarily chdirs into charts/ for the duration of the call:
     phase_load's own dataset-CSV caching uses bare relative filenames
@@ -443,8 +508,9 @@ def refresh_cache(fetch: bool = False, on_status=None) -> None:
     try:
         os.chdir(CHARTS_DIR)
         if fetch:
-            status("scraping Billboard.com directly - this can take a while...")
-            bt.phase_fetch(cache_path=bt.CACHE)
+            start_year = _fetch_start_year(bt, full_history)
+            status(f"scraping Billboard.com directly ({start_year} onward)...")
+            bt.phase_fetch(cache_path=bt.CACHE, start_year=start_year)
         else:
             status("loading bulk chart datasets...")
             bt.phase_load(cache_path=bt.CACHE)
