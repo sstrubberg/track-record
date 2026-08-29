@@ -44,6 +44,7 @@ constants (`CACHE`, `CHART_MAP_FILE`) it has to re-point at runtime,
 since they're bare relative paths correct only when this file's own
 CLI is run from inside this directory, as above.
 
-Still not done: the `lexicon-plugin` action `.js` file that would
-trigger a scan from inside Lexicon itself, rather than from
-`review_ui.py` directly.
+No `lexicon-plugin` trigger for this, by choice - same as
+Genre/Subgenre and Mood/Theme, Charts writes directly from
+`review_ui.py`'s own GUI over the Local API, with no Lexicon-side
+plugin action involved at all.

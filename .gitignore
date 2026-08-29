@@ -1,6 +1,3 @@
-# Lexicon writes generated data files into this at runtime
-lexicon-plugin/Files/
-
 # Python
 companion-app/**/__pycache__/
 *.pyc
