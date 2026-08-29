@@ -82,8 +82,13 @@ writes anything - "Apply Tags" is the only action that does:
    one pile: its entry splits into a "Genre / Subgenre" sub-group, a
    "Mood / Theme" sub-group, and/or a "Charts" sub-group (only
    whichever actually have candidates for that track), each with its
-   own confidence-sorted rows and its own "select all." Tags confident
-   enough to auto-include
+   own confidence-sorted rows and its own "select all." A track that
+   has genre/mood candidates but nothing from Charts gets a small note
+   right in its collapsed caption saying why - "no chart match found,"
+   a mashup/transition/blend title got skipped, or it already carries
+   every chart tag the match would have proposed - since most tracks
+   genuinely never charted at all, and that's expected, not a sign
+   Charts isn't working. Tags confident enough to auto-include
    show up **pre-checked**, marked with a green check and a tooltip
    explaining why - review them like anything else, uncheck one if you
    disagree. Everything else starts unchecked; a global "Select all"

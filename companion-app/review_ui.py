@@ -641,6 +641,15 @@ def build_ui() -> None:
 
         tracks = group_by_track(genre_plan, mood_plan_, charts_plan)
 
+        # {track_id: reason} for every track Charts scanned but had
+        # nothing new to propose for - see charts_plan.py's own
+        # plan_track() for what populates this and why. Only ever
+        # rendered for a track that's already showing for some other
+        # reason (another action's real candidates) - a track with
+        # nothing from any action still doesn't show up at all, same
+        # as before Charts existed.
+        charts_no_match = {r["track_id"]: r["reason"] for r in (charts_plan or {}).get("no_match", [])}
+
         # Ensure every row currently in the plan has a checked-default
         # (pre-checked for auto rows, unchecked otherwise) regardless of
         # which page it'll land on - a row on page 4 that the DJ never
@@ -903,6 +912,15 @@ def build_ui() -> None:
             if charts_rows:
                 caption_bits.append(f"{len(charts_rows)} charts")
             caption = " · ".join(caption_bits) + " candidate(s)"
+
+            if not charts_rows and track_id in charts_no_match:
+                # Charts ran (this track just wasn't sitting on genre/
+                # mood candidates alone) and genuinely found nothing new -
+                # say why, rather than a DJ wondering whether Charts is
+                # even working. Not folded into caption_bits above, same
+                # reasoning as the sibling-detection note below - it
+                # isn't another "N candidate(s)" clause.
+                caption += f" — Charts: {charts_no_match[track_id]}"
 
             n_siblings = len(siblings_by_track.get(track_id, ()))
             if n_siblings:

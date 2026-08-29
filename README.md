@@ -288,6 +288,16 @@ appeared on becomes a candidate tag at once, all sharing that one
 match's confidence, since there's no second independent signal per tag
 the way Discogs vs. an audio model are for Genre/Subgenre.
 
+Most tracks genuinely have no chart appearance at all - that's the
+normal outcome here, not a sign something's broken, unlike Genre/
+Subgenre or Mood/Theme where *some* candidate (even a low-confidence
+one) is the usual case. So a track that already shows in the review
+list via another action, but has nothing from Charts, gets a small
+note explaining why instead of just silently having no Charts
+sub-group: "no chart match found," "title looks like a mashup/
+transition/blend - skipped," or "already tagged: X, Y" if this track
+already carries every chart tag the match would have proposed.
+
 Matching against a chart record requires a real
 `companion-app/charts/chart_map.json` mapping this library's own tag
 labels to Billboard chart slugs - the built-in fallback

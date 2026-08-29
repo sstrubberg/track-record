@@ -155,7 +155,7 @@ def _load_chart_index(cache_path: Path | None = None, on_status=None) -> tuple[d
 
 def fetch_candidates(
     track: dict, current_tag_names: list[str], chart: dict, chart_keys: list[str], slug_to_label: dict,
-) -> list[dict]:
+) -> tuple[list[dict], str | None]:
     """The actual per-track matching logic billboard_tag.py's own
     phase_plan() has inline (charts/billboard_tag.py:911-943), factored
     out here since this project's shared pipeline shape needs it
@@ -164,16 +164,26 @@ def fetch_candidates(
     FUZZ_THRESHOLD (88) cutoff. On a hit, every chart the matched song
     ever appeared on becomes one candidate tag, all sharing that one
     match's score - there's no independent per-tag score the way
-    Genre/Subgenre's sources have."""
+    Genre/Subgenre's sources have.
+
+    Returns (candidates, reason) - reason is None when candidates is
+    non-empty, otherwise a short machine-readable code
+    ("excluded"/"no_match") explaining why, so plan_track() can surface
+    *why* a track got nothing rather than a DJ just seeing an empty
+    Charts sub-group and wondering if the feature is broken. Unlike
+    Genre/Subgenre's sources (which almost always find *something*, if
+    only a low-confidence guess), most tracks genuinely have no chart
+    appearance at all - that's the normal case here, not the
+    exception, so it's worth explaining rather than leaving silent."""
     bt = _import_billboard_tag()
 
     artist, title = track.get("artist") or "", track.get("title") or ""
     if bt.is_excluded(current_tag_names, title):
-        return []
+        return [], "excluded"
 
     k = bt.key(artist, title)
     if not k.strip("|"):
-        return []
+        return [], "no_match"
 
     match_key, score = None, 0
     if k in chart:
@@ -192,7 +202,7 @@ def fetch_candidates(
                     match_key, score = hit[0], round(hit[1])
 
     if not match_key:
-        return []
+        return [], "no_match"
 
     rec = chart[match_key]
     labels = set()
@@ -201,7 +211,7 @@ def fetch_candidates(
         if label:
             labels.add(label)
 
-    return [{"tag": label, "score": score / 100, "source": "chart_match"} for label in sorted(labels)]
+    return [{"tag": label, "score": score / 100, "source": "chart_match"} for label in sorted(labels)], None
 
 
 def plan_track(
@@ -210,7 +220,7 @@ def plan_track(
 ) -> dict:
     bt = _import_billboard_tag()
     current_tag_names = bt.track_tag_names(track, by_id)
-    candidates = fetch_candidates(track, current_tag_names, chart, chart_keys, slug_to_label)
+    candidates, no_match_reason = fetch_candidates(track, current_tag_names, chart, chart_keys, slug_to_label)
     scored = scoring.score_track(candidates, weights)
     current_tag_ids = set(track.get("tags") or [])
 
@@ -220,6 +230,7 @@ def plan_track(
     low_conf_threshold = weights.get("low_confidence_threshold", 0)
 
     auto, review, create = [], [], []
+    already_tagged: list[str] = []
     for entry in scored:
         tag_id = lexicon_client.resolve_tag_id(entry["tag"], by_label)
 
@@ -237,6 +248,7 @@ def plan_track(
             continue
 
         if tag_id in current_tag_ids:
+            already_tagged.append(entry["tag"])
             continue  # already tagged - nothing to do
 
         n_sources = len({c["source"] for c in entry["sources"]})
@@ -256,7 +268,23 @@ def plan_track(
             row["low_confidence"] = entry["confidence"] < low_conf_threshold
             review.append(row)
 
-    return {"auto": auto, "review": review, "create": create}
+    # Nothing new to propose - but *why* matters, since (unlike Genre/
+    # Subgenre or Mood/Theme) a genuine "this track just isn't on any
+    # chart" is the normal outcome here, not a sign something's broken.
+    # Surfaced in the review screen as a small note next to a track
+    # that has candidates from another action but none from Charts -
+    # see review_ui.py's use of plan["no_match"].
+    no_match = None
+    if not auto and not review and not create:
+        if no_match_reason == "excluded":
+            reason = "title looks like a mashup/transition/blend - skipped"
+        elif already_tagged:
+            reason = f"already tagged: {', '.join(sorted(set(already_tagged)))}"
+        else:
+            reason = "no chart match found"
+        no_match = {"track_id": track["id"], "artist": track.get("artist"), "title": track.get("title"), "reason": reason}
+
+    return {"auto": auto, "review": review, "create": create, "no_match": no_match}
 
 
 def _resolve_suggested_category(weights: dict, on_status=None) -> int | None:
@@ -348,7 +376,7 @@ def generate_plan(
         tracks = tracks[:limit]
 
     status(f"\nplanning {len(tracks)} track(s)...\n")
-    auto_all, review_all, create_all = [], [], []
+    auto_all, review_all, create_all, no_match_all = [], [], [], []
     stopped = False
     for i, track in enumerate(tracks, 1):
         if should_stop and should_stop():
@@ -359,6 +387,8 @@ def generate_plan(
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
         create_all.extend(result["create"])
+        if result["no_match"]:
+            no_match_all.append(result["no_match"])
         if on_track_planned:
             on_track_planned(i, len(tracks), track, result)
 
@@ -369,13 +399,19 @@ def generate_plan(
         "auto": auto_all,
         "review": review_all,
         "create": create_all,
+        # One entry per scanned track that got nothing - not shown as
+        # its own row (there's no tag to check), just why, for a track
+        # that already shows in the review list via another action.
+        # See review_ui.py's use of this.
+        "no_match": no_match_all,
     }
     path = Path(out_path) if out_path else PLAN_FILE
     path.write_text(json.dumps(plan, indent=1))
 
     status(
         f"\n{len(auto_all)} auto-include, {len(review_all)} need review, "
-        f"{len(create_all)} propose a new tag (pick its category in review_ui.py)"
+        f"{len(create_all)} propose a new tag (pick its category in review_ui.py), "
+        f"{len(no_match_all)} no chart data at all"
     )
     status(f"plan -> {path}")
 
@@ -438,6 +474,8 @@ def main():
             print(f"    REVIEW  {row['tag']}  ({row['confidence']:.0%}){flag}")
         for row in result["create"]:
             print(f"    CREATE  {row['tag']}  ({row['confidence']:.0%}) - new tag, needs review")
+        if result["no_match"]:
+            print(f"    ---     {result['no_match']['reason']}")
 
     generate_plan(
         limit=args.limit,
