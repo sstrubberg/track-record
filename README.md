@@ -2,9 +2,10 @@
 
 A companion app for [Lexicon](https://www.lexicondj.com/) that
 enriches a DJ's library with tags Lexicon's built-in "Find Tags" doesn't
-reliably provide: accurate, granular genre/subgenre tags and mood/theme
-tags, both with full source attribution and a review step, run
-side-by-side from one screen.
+reliably provide: accurate, granular genre/subgenre tags, mood/theme
+tags, and which Billboard charts a track actually appeared on, all with
+full source attribution and a review step, run side-by-side from one
+screen.
 
 Built to be shared with other DJs, fully open source.
 
@@ -23,11 +24,17 @@ everything else, not just edge cases.
 
 ## Scope
 
-Two actions, one shared pipeline shape, both run from the same review
+Three actions, one shared pipeline shape, all run from the same review
 screen:
 
 - **Genre/Subgenre** - Discogs + two independent local audio models
 - **Mood/Theme** - a local audio model only (see below for why)
+- **Charts** - fuzzy-matches each track against a real Billboard chart
+  history cache (ported from a separate project, `billboard-tag`; see
+  `companion-app/charts/`) - a genuinely different kind of source from
+  the other two, since it's matching the track itself against a
+  catalog of chart appearances rather than inferring genre/mood from
+  audio or metadata
 
 ## Getting started
 
@@ -44,7 +51,7 @@ screen:
    cp .env.example .env   # fill in DISCOGS_TOKEN - see companion-app/README.md
    ```
 3. **Run it**: `python track_record.py` - one native window, one
-   command, covers Genre/Subgenre and Mood/Theme both.
+   command, covers Genre/Subgenre, Mood/Theme, and Charts all three.
 
 See [companion-app/README.md](companion-app/README.md) for the full
 walkthrough - what each part of the screen does, the Settings dialog,
@@ -67,8 +74,9 @@ track-record/
 ├── LICENSE                      # AGPL-3.0
 ├── NOTICE.md                    # third-party model attribution
 └── companion-app/               # the actual work happens here (Python)
-    ├── charts/                  # ported billboard-tag logic, standalone -
-    │                             #   not wired into review_ui.py
+    ├── charts/                  # billboard_tag.py - ported billboard-tag logic,
+    │                             #   untouched, plus this library's own chart_map.json
+    │                             #   (charts_plan.py imports it - see there)
     ├── fetch/
     │   ├── musicbrainz.py               # untouched, just no longer wired into plan.py
     │   ├── discogs.py
@@ -76,17 +84,19 @@ track-record/
     │   ├── audio_model.py               # discogs-maest wrapper (Essentia) - genre/style
     │   ├── audio_model_genre_effnet.py  # genre_discogs400 - second, independent genre model
     │   └── audio_model_mood.py          # discogs-effnet + mtg_jamendo_moodtheme - mood/theme
-    ├── scoring.py                  # weighted noisy-OR - shared by both actions
+    ├── scoring.py                  # weighted noisy-OR - shared by all three actions
     ├── genre_family_hint.py        # Genre/Subgenre: per-tag category suggestion for new tags
     ├── lexicon_client.py           # shared Local API client (tracks, tags, writes)
-    ├── scan_progress.py            # whole-library scan position, per action
+    ├── scan_progress.py            # whole-library scan position, per action (not Charts)
     ├── model_versions.py           # checks/switches audio model versions - see Status
     ├── config_editor.py            # ruamel.yaml round-trip load/save for the Settings dialog
     ├── apply.py                    # writes approved tags via Lexicon Local API - shared
     ├── plan.py                     # Genre/Subgenre: load -> fetch -> score
     ├── mood_plan.py                # Mood/Theme: its own load -> fetch -> score
     ├── mood_apply.py               # Mood/Theme: thin wrapper around apply.py
-    ├── review_ui.py                # NiceGUI screen for BOTH actions, one window,
+    ├── charts_plan.py              # Charts: matches tracks against charts/billboard_tag.py's cache
+    ├── charts_apply.py             # Charts: thin wrapper around apply.py
+    ├── review_ui.py                # NiceGUI screen for ALL THREE actions, one window,
     │                                #   one Generate Plan, checkboxes choose which
     │                                #   action(s) to include, plus a Settings dialog
     ├── track_record.py             # `python track_record.py` - thin, brand-named
@@ -94,6 +104,7 @@ track-record/
     └── config/
         ├── source_weights.yaml    # Genre/Subgenre tuning
         ├── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file
+        ├── charts_weights.yaml    # Charts tuning, same shape again
         └── genre_taxonomy.yaml    # Discogs 400-style family/subgenre list (genre_family_hint.py)
 ```
 
@@ -143,6 +154,9 @@ as tracks leave that bin, so neither shows or needs one. Purely about
 which tracks get *scanned* - it's unrelated to, and doesn't change,
 the per-tag check every scan already does regardless (a candidate tag
 already applied to a track is always skipped).
+
+Charts is the one exception: no saved position at all, even for
+"whole library" - see below for why.
 
 ### Genre/Subgenre fetch sources
 
@@ -252,16 +266,66 @@ honest consequence of that, not a claim that this source deserves more
 trust - expect most Mood/Theme runs to lean heavily on the review
 screen rather than auto-include.
 
+### Charts matching
+
+Genuinely different from the other two: not inferring anything from
+audio or metadata, just matching a track against a real catalog of
+what charted when. Built on `billboard-tag`, a separate project ported
+in as `companion-app/charts/billboard_tag.py` untouched (its own README
+says so explicitly - a verbatim copy, not a fork) - `charts_plan.py`
+imports it for its stable matching primitives rather than
+re-implementing them.
+
+The match itself: normalize this track's artist/title (stripping DJ
+edit suffixes like "(Intro Clean)", spelling out symbols so "&"
+matches "and"), then try an exact key lookup against the chart cache,
+falling back to a fuzzy match (rapidfuzz, cutoff 88) if nothing exact
+turns up, and a second fallback key (for a bare-slash artist credit
+like "The Jackson 5/The Jacksons") if the primary key finds nothing at
+all, exact or fuzzy. A hit doesn't score one tag at a time the way
+Genre/Subgenre's sources do - every chart the matched song ever
+appeared on becomes a candidate tag at once, all sharing that one
+match's confidence, since there's no second independent signal per tag
+the way Discogs vs. an audio model are for Genre/Subgenre.
+
+Matching against a chart record requires a real
+`companion-app/charts/chart_map.json` mapping this library's own tag
+labels to Billboard chart slugs - the built-in fallback
+(`DEFAULT_CHART_MAP`) is the original billboard-tag author's own tag
+names, not yours, and shouldn't be relied on for a different library.
+Generate one for real via `python billboard_tag.py init` from inside
+`charts/` (review its proposed mapping before trusting it - a loose
+fuzzy match can confidently claim an existing broad genre tag for a
+chart it doesn't actually belong to; this project's own `chart_map.json`
+has a few charts deliberately left unmapped for exactly that reason,
+see its `_comment` field).
+
+The chart cache itself (`billboard_cache.json`) is built entirely
+offline from real Billboard chart history - Settings' "Chart Cache"
+card (or `python billboard_tag.py load`/`fetch` from a terminal) is
+what actually builds and refreshes it; matching a track against it
+touches no network at all. "Update Chart Cache" (`load`) re-ingests
+bulk chart datasets in seconds; "Fetch from Billboard.com" scrapes the
+charts those datasets don't cover directly from the site and can take
+hours, so it's confirmed before it starts. This is also why Charts
+never keeps a resumable whole-library scan position the way
+Genre/Subgenre and Mood/Theme do (see "Choosing what to scan" above) -
+matching against an already-loaded cache is an in-memory lookup, no
+per-track network call or audio inference, so redoing a whole-library
+run costs nothing worth avoiding a saved position for.
+
 ### Scoring
 
 ```
 confidence = 1 - Π(1 - weight_i × score_i)   for each source i that found the tag
 ```
 
-`weight_i` is configured per-source in `companion-app/config/source_weights.yaml`,
-which ships with sensible defaults and is fully editable - this is how a
-different DJ retunes the toolkit for their own library without touching
-code.
+`weight_i` is configured per-source, one YAML file per action
+(`companion-app/config/source_weights.yaml` for Genre/Subgenre,
+`mood_weights.yaml` for Mood/Theme, `charts_weights.yaml` for Charts) -
+each ships with sensible defaults and is fully editable, either by
+hand or via the Settings dialog, which is how a different DJ retunes
+the toolkit for their own library without touching code.
 
 ### Review
 
@@ -274,25 +338,26 @@ button for auto-include tags, gated by a separate "Dry run" checkbox)
 mental models for what's really one action.
 
 "Generate Plan" has checkboxes for which action(s) to include -
-Genre/Subgenre, Mood/Theme, or both in the same run - rather than a
-DJ needing to run two separate scans against the same tracks just
-because the two pipelines live in separate config/plan files
-underneath. Selecting both runs them as two sequential phases (Genre
-first, then Mood), each with its own live per-track progress; stopping
-during the first phase skips the second entirely rather than starting
-a new scan after a stop was already requested. Regenerating with only
-one of the two checked leaves the other's existing plan untouched in
-the review list.
+Genre/Subgenre, Mood/Theme, Charts, any combination, in the same run -
+rather than a DJ needing to run separate scans against the same tracks
+just because the three pipelines live in separate config/plan files
+underneath. Selecting more than one runs them as sequential phases
+(Genre, then Mood, then Charts), each with its own live per-track
+progress; stopping during an earlier phase skips every phase after it
+entirely rather than starting a new scan after a stop was already
+requested. Regenerating with only some of the three checked leaves the
+others' existing plans untouched in the review list.
 
 Every candidate, from every tier, is grouped by track - but a track
-with both genre and mood candidates doesn't dump them into one
+with candidates from more than one action doesn't dump them into one
 undifferentiated pile: its expansion splits into a "Genre / Subgenre"
-sub-group and a "Mood / Theme" sub-group, each independently
-confidence-sorted with its own "select all," so the two kinds never
-blur together into a wall of unrelated checkboxes. Within each
+sub-group, a "Mood / Theme" sub-group, and/or a "Charts" sub-group (only
+whichever actually have candidates for that track), each independently
+confidence-sorted with its own "select all," so the different kinds
+never blur together into a wall of unrelated checkboxes. Within each
 sub-group: plain checkbox + tag + confidence row, source/notes/links
 behind a `⋮` overflow control. A row that already cleared *its own
-action's* auto-include confidence bar (genre and mood are tuned
+action's* auto-include confidence bar (each action is tuned
 independently - see Scoring below) starts **pre-checked**, with a
 green check and a tooltip explaining why (and naturally sorts near the
 top of its sub-group, since rows are ordered by confidence) - still
@@ -331,11 +396,11 @@ family, or the matched family has no category yet - see
 narrower than the "Reorganize Genre Tags" workflow this project once
 shipped and removed: no renaming, no moving existing tags, no picker
 of its own - just a smarter default for a dropdown that already
-existed. Mood/Theme has no such taxonomy to draw on, so its create
-rows only ever use the flat `new_tag_category` default. Clicking
-"Apply Tags" splits whatever's checked by kind under the hood and
-calls each action's own `apply_decisions()` - potentially both in one
-click - then reports one combined result.
+existed. Mood/Theme and Charts have no such taxonomy to draw on, so
+their create rows only ever use each one's own flat `new_tag_category`
+default. Clicking "Apply Tags" splits whatever's checked by kind under
+the hood and calls each action's own `apply_decisions()` - any
+combination in one click - then reports one combined result.
 
 Different DJ edits of the same song ("Promiscuous (Intro Clean)" /
 "Promiscuous (Quick Hit Clean)") show up as separate tracks - separate
@@ -407,12 +472,14 @@ explicit goal.
 
 ## Status
 
-Both the Genre/Subgenre and Mood/Theme pipelines (fetch → score → plan
-→ review → apply) run end-to-end entirely from their own review
-screen - no terminal needed except to launch one. Genre/Subgenre has
-been exercised against a real ~1,770-track Lexicon library, including
-real writes; Mood/Theme has been exercised the same way at smaller
-scale so far.
+All three pipelines (fetch → score → plan → review → apply) run
+end-to-end entirely from their own review screen - no terminal needed
+except to launch one. Genre/Subgenre has been exercised against a real
+~1,780-track Lexicon library, including real writes; Mood/Theme has
+been exercised the same way at smaller scale so far; Charts has been
+verified against the same real library (a real `billboard_cache.json`
+built from public Billboard chart datasets, confirmed correct matches
+and auto-include behavior) but not yet used for a real Apply Tags run.
 
 - **Genre/Subgenre fetch sources**: Discogs and two independent local
   audio models (`discogs-maest` and `genre_discogs400`) are
@@ -425,38 +492,49 @@ scale so far.
 - **Mood/Theme fetch source**: the local `discogs-effnet` +
   `mtg_jamendo_moodtheme` audio model (see above) - implemented,
   verified against real tracks.
+- **Charts source** (`charts_plan.py`, built on
+  `charts/billboard_tag.py`): fuzzy-matches artist/title against a
+  real Billboard chart cache - implemented, verified against real
+  tracks. Needs a real `charts/chart_map.json` for this library (see
+  "Charts matching" above) - ships with one already generated and
+  reviewed for this project's own library.
 - **Scoring** (`scoring.py`, weighted noisy-OR): implemented, shared
-  by both actions - each keeps its own `config/*_weights.yaml`.
-- **Plan generation** (`plan.py` / `mood_plan.py`, each its own
-  `generate_plan()`): reads tags/tracks over the Lexicon Local API,
-  resolves candidates against what already exists, writes an
-  auto-include / needs-review / propose-a-new-tag plan. Callable from
-  the CLI or directly (used by each action's GUI); a scan-mode picker
-  chooses whole library / most recently added / Incoming / a single
-  track searched by artist-title, with an optional Stop mid-run.
-  Genre/Subgenre also has a per-source toggle; Mood/Theme doesn't need
-  one yet, with only one source to toggle.
+  by all three actions - each keeps its own `config/*_weights.yaml`.
+- **Plan generation** (`plan.py` / `mood_plan.py` / `charts_plan.py`,
+  each its own `generate_plan()`): reads tags/tracks over the Lexicon
+  Local API, resolves candidates against what already exists, writes
+  an auto-include / needs-review / propose-a-new-tag plan. Callable
+  from the CLI or directly (used by each action's GUI); a scan-mode
+  picker chooses whole library / most recently added / Incoming / a
+  single track searched by artist-title, with an optional Stop
+  mid-run. Genre/Subgenre also has a per-source toggle; Mood/Theme and
+  Charts don't need one, each with only one source to toggle. Charts
+  is also the one action with no resumable whole-library scan
+  position - see "Choosing what to scan" above for why.
 - **Review UI** (`review_ui.py`, one NiceGUI native window -
-  `python track_record.py` is the only command either action needs): the
+  `python track_record.py` is the only command any action needs): the
   whole workflow lives here - one "Generate Plan" with checkboxes for
-  which action(s) to include, live per-track progress across both
-  phases (never writes anything), each track's candidates split into
-  Genre/Subgenre and Mood/Theme sub-groups so the two never blur
-  together, global and per-sub-group "Select all", a category picker
-  on new-tag rows (with a per-tag family suggestion for Genre/Subgenre
-  - see `genre_family_hint.py`), source/note/links behind an overflow
-  menu, and the one action that writes - "Apply Tags" - applying
-  whatever's checked (pre-checked auto-include rows included) via each
-  action's own `apply_decisions()`, reporting one combined result. A
-  gear-icon **Settings** dialog (`config_editor.py`, round-trip YAML so
-  saving never strips either config file's own comments) covers both
-  actions' source weights, auto-include thresholds, and
-  `new_tag_category` without hand-editing YAML.
-- **Apply** (`apply.py`, shared; `mood_apply.py` a thin wrapper around
-  it with its own plan/log paths): merge-never-replace - reads the
-  track's live tag array and appends rather than overwrites, so
-  nothing existing gets silently dropped. A tag that already exists is
-  reused rather than recreated, even for a "propose a new tag" row.
+  which action(s) to include, live per-track progress across however
+  many phases are selected (never writes anything), each track's
+  candidates split into Genre/Subgenre, Mood/Theme, and/or Charts
+  sub-groups (only whichever have candidates for that track) so they
+  never blur together, global and per-sub-group "Select all", a
+  category picker on new-tag rows (with a per-tag family suggestion for
+  Genre/Subgenre - see `genre_family_hint.py`), source/note/links
+  behind an overflow menu, and the one action that writes - "Apply
+  Tags" - applying whatever's checked (pre-checked auto-include rows
+  included) via each action's own `apply_decisions()`, reporting one
+  combined result. A gear-icon **Settings** dialog (`config_editor.py`,
+  round-trip YAML so saving never strips any config file's own
+  comments) covers all three actions' source weights, auto-include
+  thresholds, and `new_tag_category` without hand-editing YAML, plus a
+  "Chart Cache" card for refreshing `billboard_cache.json`.
+- **Apply** (`apply.py`, shared; `mood_apply.py`/`charts_apply.py` thin
+  wrappers around it with their own plan/log paths): merge-never-replace
+  - reads the track's live tag array and appends rather than
+  overwrites, so nothing existing gets silently dropped. A tag that
+  already exists is reused rather than recreated, even for a "propose
+  a new tag" row.
 - **Model versions** (`model_versions.py`, also in the Settings
   dialog): the audio-model fetch scripts cache a model file forever
   once downloaded - no version check of any kind on their own, so

@@ -33,7 +33,7 @@ never gets committed:
 | `DISCOGS_TOKEN`   | `fetch/discogs.py`      | https://www.discogs.com/settings/developers (personal access token) |
 | `ANTHROPIC_API_KEY` | `fetch/llm_web_search.py` (not yet built) | https://console.anthropic.com/ |
 
-## Review UI (Genre/Subgenre and Mood/Theme)
+## Review UI (Genre/Subgenre, Mood/Theme, and Charts)
 
 ```
 python track_record.py
@@ -44,9 +44,9 @@ python track_record.py
 it does like every other module here, since a DJ only ever sees the
 command and the window title, never the filename)
 
-One native window, one command, one "Generate Plan" for both actions.
-Nothing else needs the terminal, and generating a plan never writes
-anything - "Apply Tags" is the only action that does:
+One native window, one command, one "Generate Plan" for all three
+actions. Nothing else needs the terminal, and generating a plan never
+writes anything - "Apply Tags" is the only action that does:
 
 1. Pick what to scan - whole library (optionally capped to the first
    N tracks), the N most recently added, everything in Incoming, or a
@@ -54,29 +54,36 @@ anything - "Apply Tags" is the only action that does:
    its own separate entry, since edit info already lives in the title
    itself) for spot-checking one song without waiting on a real scan -
    and which action(s) to include via the "Tag with:" checkboxes
-   (Genre/Subgenre, Mood/Theme, or both; both on by default). With
-   Genre/Subgenre checked, a checkbox per fetch source (Discogs, and
-   two independent audio models - discogs-maest and genre_discogs400)
-   also appears, letting you turn any off for this run entirely - e.g.
-   skip both audio models, by far the slowest part of a run, for a
-   quick metadata-only pass. (Mood/Theme
-   has no such picker - there's only one source to toggle.) Click
-   "Generate Plan". With both actions checked, they run as two
-   sequential phases (Genre first, then Mood), each with its own live
-   per-track progress; "Stop" aborts after the current track and keeps
-   whatever was already planned, skipping a not-yet-started second
-   phase entirely rather than starting it after a stop. A capped
-   "whole library" run remembers where it left off, per action - a
-   caption under the scan controls reads "X of Y tracks scanned" once
-   a cursor exists, with its own "Reset" (confirmed first) to
-   deliberately start that action's whole-library scanning over.
-   Nothing to save or show for "recent"/"incoming" - see the top-level
-   README's "Choosing what to scan" for the full rationale.
+   (Genre/Subgenre, Mood/Theme, Charts, any combination; all three on
+   by default). With Genre/Subgenre checked, a checkbox per fetch
+   source (Discogs, and two independent audio models - discogs-maest
+   and genre_discogs400) also appears, letting you turn any off for
+   this run entirely - e.g. skip both audio models, by far the slowest
+   part of a run, for a quick metadata-only pass. (Mood/Theme and
+   Charts have no such picker - each has only one source to toggle.)
+   Click "Generate Plan". With more than one action checked, they run
+   as sequential phases (Genre, then Mood, then Charts), each with its
+   own live per-track progress; "Stop" aborts after the current track
+   and keeps whatever was already planned, skipping every not-yet-
+   started phase entirely rather than starting them after a stop. A
+   capped "whole library" run remembers where it left off, per action
+   except Charts - a caption under the scan controls reads "X of Y
+   tracks scanned" once a cursor exists, with its own "Reset"
+   (confirmed first) to deliberately start that action's whole-library
+   scanning over. Charts always scans fresh regardless of scan mode -
+   matching against its chart cache is an in-memory lookup with no
+   network call or audio inference per track, so there's nothing
+   costly about redoing it, and it gets no cursor or caption of its
+   own. Nothing to save or show for "recent"/"incoming" either - see
+   the top-level README's "Choosing what to scan" for the full
+   rationale.
 2. Every proposed tag lands in a grouped-by-track list - but a track
-   with both genre and mood candidates doesn't dump them into one
-   pile: its entry splits into a "Genre / Subgenre" sub-group and a
-   "Mood / Theme" sub-group, each with its own confidence-sorted rows
-   and its own "select all." Tags confident enough to auto-include
+   with candidates from more than one action doesn't dump them into
+   one pile: its entry splits into a "Genre / Subgenre" sub-group, a
+   "Mood / Theme" sub-group, and/or a "Charts" sub-group (only
+   whichever actually have candidates for that track), each with its
+   own confidence-sorted rows and its own "select all." Tags confident
+   enough to auto-include
    show up **pre-checked**, marked with a green check and a tooltip
    explaining why - review them like anything else, uncheck one if you
    disagree. Everything else starts unchecked; a global "Select all"
@@ -118,10 +125,11 @@ anything - "Apply Tags" is the only action that does:
    anything is still checked asks for confirmation before discarding
    it.
 
-If you'd rather drive either action from scripts (e.g. a cron job that
+If you'd rather drive any action from scripts (e.g. a cron job that
 generates a plan overnight for review in the morning), `plan.py` /
-`apply.py` (Genre/Subgenre) and `mood_plan.py` / `mood_apply.py`
-(Mood/Theme) are still plain CLIs:
+`apply.py` (Genre/Subgenre), `mood_plan.py` / `mood_apply.py`
+(Mood/Theme), and `charts_plan.py` / `charts_apply.py` (Charts) are
+still plain CLIs:
 
 ```
 python plan.py --limit 20                       # try it on the first 20 tracks
@@ -134,25 +142,71 @@ python apply.py                                  # applies the plan's auto-inclu
 python mood_plan.py --limit 20        # same flags, Mood/Theme's own plan/log files
 python mood_plan.py --mode recent
 python mood_apply.py
+
+python charts_plan.py --limit 20      # same flags again, minus --resume/--reset-progress -
+python charts_plan.py --mode recent   #   Charts has no resumable scan position (see above)
+python charts_apply.py
 ```
 
 ## Settings
 
 A gear icon in the header (next to the notification bell) opens a
-dialog for retuning `config/source_weights.yaml` (Genre/Subgenre) and
-`config/mood_weights.yaml` (Mood/Theme) without hand-editing YAML:
-each fetch source's weight, the auto-include thresholds
-(`min_agreeing_sources`/`min_confidence`), `low_confidence_threshold`,
-and `new_tag_category` (a searchable dropdown of your real Lexicon
-Custom Tag categories, since that value only ever matters as a label
-Track Record looks up by name). Each file has its own "Save," and a
-save takes effect immediately - no restart needed, next "Generate
-Plan" already uses it. Written via `config_editor.py`'s round-trip
-YAML (`ruamel.yaml`, not the plain `pyyaml` used for reading
-elsewhere) specifically so saving a value never strips the
-explanatory comments both files are full of - editing by hand in a
-text editor still works exactly as before and remains fully supported
-for anything this dialog doesn't expose.
+dialog for retuning `config/source_weights.yaml` (Genre/Subgenre),
+`config/mood_weights.yaml` (Mood/Theme), and `config/charts_weights.yaml`
+(Charts) without hand-editing YAML: each fetch source's weight, the
+auto-include thresholds (`min_agreeing_sources`/`min_confidence`),
+`low_confidence_threshold`, and `new_tag_category` (a searchable
+dropdown of your real Lexicon Custom Tag categories, since that value
+only ever matters as a label Track Record looks up by name). Each file
+has its own "Save," and a save takes effect immediately - no restart
+needed, next "Generate Plan" already uses it. Written via
+`config_editor.py`'s round-trip YAML (`ruamel.yaml`, not the plain
+`pyyaml` used for reading elsewhere) specifically so saving a value
+never strips the explanatory comments every one of these files is full
+of - editing by hand in a text editor still works exactly as before
+and remains fully supported for anything this dialog doesn't expose.
+
+The same dialog also has a **Chart Cache** card - "Update Chart Cache"
+re-ingests billboard-tag's bulk chart datasets (seconds); "Fetch from
+Billboard.com" scrapes the charts those datasets don't cover directly
+from the site (can take hours, confirmed first). See "Setting up
+Charts" below for the one-time setup this depends on.
+
+## Setting up Charts
+
+Charts needs two things this repo doesn't ship ready-made for a
+different library, both one-time, both from inside `charts/`:
+
+1. **A real `chart_map.json`** - maps *your* Lexicon tag labels to
+   Billboard chart slugs. The one committed here is generated for this
+   project's own library; a different DJ's tag names won't match it.
+   Generate your own:
+   ```
+   cd charts
+   python billboard_tag.py init          # proposes a mapping, writes nothing
+   python billboard_tag.py init --yes    # writes chart_map.json once you're happy with it
+   ```
+   **Review what it proposes before trusting it** - a loose fuzzy
+   match can confidently claim an existing broad genre tag (e.g. a
+   generic "Rap" or "Rock" tag) as if it were a specific chart's own
+   tag, which would conflate chart-appearance tagging with genre
+   tagging on the same tag going forward. Anything you don't want
+   mapped, delete that line from the written file (or don't map it at
+   all, and add it by hand only for the charts you're sure about).
+   Without this file, Charts silently falls back to
+   `DEFAULT_CHART_MAP` - the original billboard-tag author's own tag
+   names, almost certainly wrong for your library.
+2. **A chart cache** (`billboard_cache.json`) - what Charts actually
+   matches tracks against. Build it via Settings' "Chart Cache" card
+   (see above) or from the terminal:
+   ```
+   python billboard_tag.py load    # bulk chart datasets, seconds
+   python billboard_tag.py fetch   # scrapes Billboard.com for the rest, can take hours
+   ```
+   `load` alone already covers seven major charts going back decades;
+   `fetch` only gap-fills what `load` doesn't. Neither needs to be
+   re-run often - Billboard's charted history doesn't change underfoot
+   the way, say, an audio model version does.
 
 ## Trying a fetch source directly
 
