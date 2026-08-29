@@ -120,6 +120,8 @@ from pathlib import Path
 from nicegui import run, ui
 
 import apply as genre_apply
+import charts_apply
+import charts_plan as charts_plan_module
 import config_editor
 import lexicon_client
 import model_versions
@@ -131,8 +133,9 @@ import scoring
 
 GENRE_PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 MOOD_PLAN_FILE = Path(__file__).resolve().parent / "mood_plan.json"
+CHARTS_PLAN_FILE = Path(__file__).resolve().parent / "charts_plan.json"
 
-KIND_LABELS = {"genre": "Genre / Subgenre", "mood": "Mood / Theme"}
+KIND_LABELS = {"genre": "Genre / Subgenre", "mood": "Mood / Theme", "charts": "Charts"}
 
 
 def load_plan(path: Path) -> dict | None:
@@ -141,14 +144,14 @@ def load_plan(path: Path) -> dict | None:
     return json.loads(path.read_text())
 
 
-def group_by_track(genre_plan: dict | None, mood_plan_: dict | None) -> dict:
-    """Merge both actions' plans into one per-track structure, each row
-    tagged with `kind` ("genre" or "mood") so the review screen can
-    split a track's expansion into type sub-groups instead of one flat
-    undifferentiated list. `is_auto` (pre-checked + badge) and `is_new`
-    (category picker, never auto) work exactly as they did when each
-    action had its own separate group_by_track - only the extra `kind`
-    tag and taking two plans instead of one is new here.
+def group_by_track(genre_plan: dict | None, mood_plan_: dict | None, charts_plan: dict | None) -> dict:
+    """Merge all three actions' plans into one per-track structure, each
+    row tagged with `kind` ("genre", "mood", or "charts") so the review
+    screen can split a track's expansion into type sub-groups instead
+    of one flat undifferentiated list. `is_auto` (pre-checked + badge)
+    and `is_new` (category picker, never auto) work exactly as they did
+    when each action had its own separate group_by_track - only the
+    extra `kind` tag and taking three plans instead of one is new here.
     """
     tracks: dict[int, dict] = {}
 
@@ -167,6 +170,7 @@ def group_by_track(genre_plan: dict | None, mood_plan_: dict | None) -> dict:
 
     add(genre_plan, "genre")
     add(mood_plan_, "mood")
+    add(charts_plan, "charts")
     return tracks
 
 
@@ -278,6 +282,7 @@ def build_ui() -> None:
     state = {
         "genre_plan": load_plan(GENRE_PLAN_FILE),
         "mood_plan": load_plan(MOOD_PLAN_FILE),
+        "charts_plan": load_plan(CHARTS_PLAN_FILE),
         # Checked/category-choice state used to live entirely in the
         # live ui.checkbox/ui.select objects themselves, read directly
         # at save time - fine when every row was always on screen, but
@@ -322,6 +327,7 @@ def build_ui() -> None:
     stop_event = threading.Event()
     genre_weights = scoring.load_weights()  # just for the "cleared the N% bar" badge text, per kind
     mood_weights = scoring.load_weights(mood_plan.WEIGHTS_PATH)
+    charts_weights = scoring.load_weights(charts_plan_module.WEIGHTS_PATH)
 
     # Toasts (ui.notify) vanish on their own after a few seconds, with
     # no way back to one you glanced past - the actual counts in a
@@ -460,8 +466,13 @@ def build_ui() -> None:
         ui.label("Tag with:").classes("text-sm text-gray-500")
         genre_enabled_checkbox = ui.checkbox("Genre / Subgenre", value=True).props("dense")
         mood_enabled_checkbox = ui.checkbox("Mood / Theme", value=True).props("dense")
+        # No per-source checkbox row for Charts, same as Mood/Theme -
+        # just the one source (billboard-tag's own chart-cache match),
+        # nothing yet to toggle between.
+        charts_enabled_checkbox = ui.checkbox("Charts", value=True).props("dense")
         genre_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
         mood_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
+        charts_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
 
     # Which Genre/Subgenre fetch sources actually run - unchecking one
     # skips it entirely for the run, not just down-weights it (that's
@@ -529,7 +540,11 @@ def build_ui() -> None:
     # leave that bin, so neither has an analogous saved position (see
     # scan_progress.py). Shown per enabled action, since Genre/Subgenre
     # and Mood/Theme scans track their own separate positions and a DJ
-    # might only be running one of them right now.
+    # might only be running one of them right now. Charts deliberately
+    # has no entry here at all - scan_progress.py's ACTIONS only ever
+    # covers "genre"/"mood" (see charts_plan.py's own docstring on why
+    # a saved position isn't worth it for an in-memory chart-cache
+    # lookup), so there's no cursor to show even when Charts is on.
     @ui.refreshable
     def scan_progress_caption() -> None:
         if scan_mode_select.value != "all":
@@ -611,7 +626,8 @@ def build_ui() -> None:
     def review_section() -> None:
         genre_plan = state["genre_plan"]
         mood_plan_ = state["mood_plan"]
-        if not genre_plan and not mood_plan_:
+        charts_plan = state["charts_plan"]
+        if not genre_plan and not mood_plan_ and not charts_plan:
             ui.label("No plan yet - click Generate Plan above.").classes("text-gray-500")
             return
 
@@ -620,9 +636,10 @@ def build_ui() -> None:
         min_conf_by_kind = {
             "genre": genre_weights.get("auto_include", {}).get("min_confidence", 1.0),
             "mood": mood_weights.get("auto_include", {}).get("min_confidence", 1.0),
+            "charts": charts_weights.get("auto_include", {}).get("min_confidence", 1.0),
         }
 
-        tracks = group_by_track(genre_plan, mood_plan_)
+        tracks = group_by_track(genre_plan, mood_plan_, charts_plan)
 
         # Ensure every row currently in the plan has a checked-default
         # (pre-checked for auto rows, unchecked otherwise) regardless of
@@ -877,17 +894,20 @@ def build_ui() -> None:
         for track_id, info in page_tracks:
             genre_rows = [r for r in info["rows"] if r["kind"] == "genre"]
             mood_rows = [r for r in info["rows"] if r["kind"] == "mood"]
+            charts_rows = [r for r in info["rows"] if r["kind"] == "charts"]
             caption_bits = []
             if genre_rows:
                 caption_bits.append(f"{len(genre_rows)} genre")
             if mood_rows:
                 caption_bits.append(f"{len(mood_rows)} mood")
+            if charts_rows:
+                caption_bits.append(f"{len(charts_rows)} charts")
             caption = " · ".join(caption_bits) + " candidate(s)"
 
             n_siblings = len(siblings_by_track.get(track_id, ()))
             if n_siblings:
                 # No live sync to announce anymore (see render_rows'
-                # "Copy checked genre tags to..." button) - just naming
+                # "Copy checked genre tags from..." button) - just naming
                 # that sibling edit(s) exist and are detected, so it's
                 # obvious why that button showed up rather than a DJ
                 # wondering where it came from. Appended after
@@ -904,7 +924,7 @@ def build_ui() -> None:
             # subsequent open/close of the same track.
             built = {"done": False}
 
-            def populate(container, genre_rows=genre_rows, mood_rows=mood_rows, built=built) -> None:
+            def populate(container, genre_rows=genre_rows, mood_rows=mood_rows, charts_rows=charts_rows, built=built) -> None:
                 if built["done"]:
                     return
                 built["done"] = True
@@ -913,6 +933,8 @@ def build_ui() -> None:
                         render_rows(genre_rows, "Select all genre tags for this track")
                     if mood_rows:
                         render_rows(mood_rows, "Select all mood tags for this track")
+                    if charts_rows:
+                        render_rows(charts_rows, "Select all chart tags for this track")
 
             # Starts open if it was open before whatever triggered this
             # render (see state["expanded_tracks"]'s own comment) -
@@ -941,6 +963,7 @@ def build_ui() -> None:
             approved = {
                 "genre": {"review": [], "create": []},
                 "mood": {"review": [], "create": []},
+                "charts": {"review": [], "create": []},
             }
             skipped_no_category = 0
             for track_id, info in tracks.items():
@@ -957,17 +980,21 @@ def build_ui() -> None:
                     else:
                         approved[row["kind"]]["review"].append(row)
 
-            if not any(approved[k][b] for k in ("genre", "mood") for b in ("review", "create")):
+            if not any(approved[k][b] for k in ("genre", "mood", "charts") for b in ("review", "create")):
                 msg = "Nothing checked - nothing to save"
                 if skipped_no_category:
                     msg = f"{skipped_no_category} new-tag row(s) checked but no category chosen - pick one first"
                 notify(msg, type="warning")
                 return
 
-            apply_fns = {"genre": genre_apply.apply_decisions, "mood": mood_apply.apply_decisions}
+            apply_fns = {
+                "genre": genre_apply.apply_decisions,
+                "mood": mood_apply.apply_decisions,
+                "charts": charts_apply.apply_decisions,
+            }
             results: dict[str, dict] = {}
             try:
-                for kind in ("genre", "mood"):
+                for kind in ("genre", "mood", "charts"):
                     if approved[kind]["review"] or approved[kind]["create"]:
                         results[kind] = await run.io_bound(
                             apply_fns[kind], approved[kind]["review"], approved[kind]["create"]
@@ -1004,7 +1031,7 @@ def build_ui() -> None:
             # saved. Rows that were checked but skipped (no category) or
             # failed to create are deliberately left in place, still
             # checked - they still need a decision, nothing happened.
-            plans = {"genre": state["genre_plan"], "mood": state["mood_plan"]}
+            plans = {"genre": state["genre_plan"], "mood": state["mood_plan"], "charts": state["charts_plan"]}
             changed = False
             for kind, result in results.items():
                 plan = plans[kind]
@@ -1026,8 +1053,9 @@ def build_ui() -> None:
     async def generate():
         include_genre = genre_enabled_checkbox.value
         include_mood = mood_enabled_checkbox.value
-        if not include_genre and not include_mood:
-            notify("Turn on Genre/Subgenre and/or Mood/Theme before generating", type="warning")
+        include_charts = charts_enabled_checkbox.value
+        if not include_genre and not include_mood and not include_charts:
+            notify("Turn on Genre/Subgenre, Mood/Theme, and/or Charts before generating", type="warning")
             return
 
         enabled_sources = {name for name, cb in source_checkboxes.items() if cb.value}
@@ -1072,6 +1100,8 @@ def build_ui() -> None:
                 state["genre_plan"] = None
             if include_mood:
                 state["mood_plan"] = None
+            if include_charts:
+                state["charts_plan"] = None
             review_section.refresh()
 
         stop_event.clear()
@@ -1104,13 +1134,16 @@ def build_ui() -> None:
 
         new_genre_plan = state.get("genre_plan")
         new_mood_plan = state.get("mood_plan")
+        new_charts_plan = state.get("charts_plan")
         any_failed = False
         stopped = False
 
         # Only "Whole library" has a saved position to resume from at
         # all (see scan_progress.py) - None here means "start from the
         # beginning", same as before this existed, for "recent"/
-        # "incoming"/"track" or a first-ever whole-library run.
+        # "incoming"/"track" or a first-ever whole-library run. Charts
+        # never resumes regardless of scan_mode - see charts_plan.py's
+        # own docstring on why a saved position isn't worth it there.
         resuming = scan_mode == "all"
 
         if include_genre:
@@ -1164,12 +1197,38 @@ def build_ui() -> None:
                     notify(f"Mood/Theme plan generation failed: {e}", type="negative")
                     any_failed = True
 
+        if include_charts:
+            if stop_event.is_set():
+                # Same short-circuit as the Mood phase above - a stop
+                # requested during an earlier phase means Charts never
+                # starts at all either.
+                stopped = True
+            else:
+                progress.update(phase="Charts", current=0, total=0, rendered=-1)
+                try:
+                    new_charts_plan = await run.io_bound(
+                        charts_plan_module.generate_plan,
+                        limit=limit,
+                        scan_mode=backend_scan_mode,
+                        track_id=picked_track_id,
+                        on_track_planned=on_track_planned,
+                        should_stop=stop_event.is_set,
+                        # No since_track_id - Charts always scans fresh,
+                        # never resumes (see charts_plan.py's docstring).
+                    )
+                    if new_charts_plan.get("stopped_early"):
+                        stopped = True
+                except Exception as e:
+                    notify(f"Charts plan generation failed: {e}", type="negative")
+                    any_failed = True
+
         progress_bar.visible = False
         stop_button.visible = False
         generate_button.enable()
 
         state["genre_plan"] = new_genre_plan
         state["mood_plan"] = new_mood_plan
+        state["charts_plan"] = new_charts_plan
         review_section.refresh()
         if resuming:
             # The cursor (and possibly the library itself) just moved -
@@ -1179,6 +1238,7 @@ def build_ui() -> None:
             scan_progress_caption.refresh()
         genre_counts = new_genre_plan if include_genre else None
         mood_counts = new_mood_plan if include_mood else None
+        charts_counts = new_charts_plan if include_charts else None
         parts = []
         if genre_counts:
             parts.append(
@@ -1189,6 +1249,11 @@ def build_ui() -> None:
             parts.append(
                 f"Mood: {len(mood_counts['auto'])} pre-checked, {len(mood_counts['review'])} review, "
                 f"{len(mood_counts['create'])} new-tag"
+            )
+        if charts_counts:
+            parts.append(
+                f"Charts: {len(charts_counts['auto'])} pre-checked, {len(charts_counts['review'])} review, "
+                f"{len(charts_counts['create'])} new-tag"
             )
         summary = " | ".join(parts) if parts else "no plan generated"
         notify(
@@ -1320,8 +1385,8 @@ def build_ui() -> None:
                 ui.button(icon="close", on_click=dialog.close).props("flat round dense")
             ui.label(
                 "Per-DJ retuning of how tags get scored and auto-included - see each "
-                "file's own comments (config/source_weights.yaml, config/mood_weights.yaml) "
-                "for the full reasoning behind these numbers."
+                "file's own comments (config/source_weights.yaml, config/mood_weights.yaml, "
+                "config/charts_weights.yaml) for the full reasoning behind these numbers."
             ).classes("text-xs text-gray-500")
             _render_weights_card(
                 ui.column().classes("w-full"),
@@ -1335,6 +1400,67 @@ def build_ui() -> None:
                 "Mood / Theme",
                 "Only one source right now - the local mood/theme audio model.",
             )
+            _render_weights_card(
+                ui.column().classes("w-full"),
+                charts_plan_module.WEIGHTS_PATH,
+                "Charts",
+                "Only one source - billboard-tag's own fuzzy chart-cache match.",
+            )
+            with ui.card().classes("w-full"):
+                ui.label("Chart Cache").classes("font-bold")
+                ui.label(
+                    "What Charts matches tracks against - billboard-tag's own "
+                    "index of what charted when, entirely offline once built. "
+                    "\"Update Chart Cache\" re-ingests the bulk chart datasets "
+                    "(seconds). \"Fetch from Billboard.com\" scrapes the charts "
+                    "those datasets don't cover directly from the site - can "
+                    "take hours, so it's confirmed first."
+                ).classes("text-xs text-gray-500 mb-2")
+
+                chart_cache_status = ui.label("").classes("text-xs text-gray-500")
+
+                async def refresh_chart_cache(fetch: bool) -> None:
+                    if fetch:
+                        with ui.dialog() as confirm_dialog, ui.card():
+                            ui.label(
+                                "Scrape Billboard.com directly? Only charts the "
+                                "bulk datasets don't already cover run at all "
+                                "(see charts/billboard_tag.py's own "
+                                "DATASET_SOURCES) - this can still take hours. "
+                                "Runs in the background; Track Record stays "
+                                "usable while it does."
+                            )
+                            with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                                ui.button("Cancel", on_click=lambda: confirm_dialog.submit("cancel")).props("flat")
+                                ui.button(
+                                    "Fetch", color="primary",
+                                    on_click=lambda: confirm_dialog.submit("continue"),
+                                )
+                        if await confirm_dialog != "continue":
+                            return
+                    chart_cache_status.text = (
+                        "scraping Billboard.com - this can take a while..." if fetch
+                        else "loading bulk chart datasets..."
+                    )
+                    try:
+                        await run.io_bound(charts_plan_module.refresh_cache, fetch)
+                    except Exception as e:
+                        chart_cache_status.text = ""
+                        notify(f"Chart cache refresh failed: {e}", type="negative")
+                        return
+                    chart_cache_status.text = ""
+                    notify(
+                        "Chart cache refreshed" + (" (fetch)" if fetch else " (load)"),
+                        type="positive",
+                    )
+
+                with ui.row().classes("gap-2"):
+                    ui.button(
+                        "Update Chart Cache", on_click=lambda: refresh_chart_cache(False)
+                    ).props("outline dense size=sm")
+                    ui.button(
+                        "Fetch from Billboard.com", on_click=lambda: refresh_chart_cache(True)
+                    ).props("outline dense size=sm color=warning")
             with ui.card().classes("w-full"):
                 ui.label("Audio models").classes("font-bold")
                 ui.label(

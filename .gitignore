@@ -20,6 +20,11 @@ companion-app/**/*_applied_log.json
 companion-app/scan_progress.json
 logs/
 
+# billboard_tag.py's phase_load - raw dataset downloads it builds
+# billboard_cache.json from (tens of MB, re-downloadable, not source)
+companion-app/charts/dataset_*.csv
+companion-app/charts/*.progress.json
+
 # Downloaded model weights (~330 MB) - fetched on first use, not committed
 companion-app/models/
 

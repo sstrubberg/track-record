@@ -1,0 +1,42 @@
+# Editable per-DJ retuning of the Charts action - same shape as
+# ../config/mood_weights.yaml (single-source actions both use this
+# shape; Genre/Subgenre's source_weights.yaml is the only one with
+# more than one entry under `sources`). See scoring.py for how these
+# combine (shared, generic, no changes needed for Charts either).
+#
+# confidence = 1 - Π(1 - weight_i * score_i)  across sources that found the tag
+#
+# Only one source - charts/billboard_tag.py's own fuzzy title/artist
+# match against its chart cache (see charts_plan.py) - so with no
+# second source to corroborate against, confidence here reduces to
+# just that one match's score (0-1, from billboard-tag's own 0-100
+# fuzzy-match score) times this weight. Kept at 1.0 (full trust in the
+# match score as reported) rather than inflated to make auto-include
+# fire more often.
+sources:
+  chart_match: 1.0
+
+# billboard-tag's own two thresholds, carried over unchanged rather
+# than re-tuned from scratch - see charts/billboard_tag.py's
+# FUZZ_THRESHOLD (88) and AUTO_APPROVE (95).
+auto_include:
+  min_agreeing_sources: 99   # no second source exists yet to agree at all
+  min_confidence: 0.95       # = AUTO_APPROVE/100
+
+# = FUZZ_THRESHOLD/100 - the score a fuzzy title/artist match needs to
+# even become a candidate at all (billboard_tag.py's own
+# process.extractOne(..., score_cutoff=FUZZ_THRESHOLD) already filters
+# anything below this out before charts_plan.py ever sees it). Every
+# review row is already right at or above this floor as a result, so
+# this flag never actually fires in practice - kept as a real editable
+# number anyway, same as every other action's config file, rather than
+# hardcoded away as dead weight.
+low_confidence_threshold: 0.88
+
+# A chart hit is often a title/artist not already exactly worded like
+# any tag category name a DJ happens to have - expect most first-time
+# proposals to be "create" rows until this library's chart-related tags
+# exist. Same rule as Genre/Subgenre's and Mood/Theme's own
+# new_tag_category: only ever a pre-filled default in the review
+# screen's category picker, changeable per-row, never auto-applied.
+new_tag_category: "Charts"
