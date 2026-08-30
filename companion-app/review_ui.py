@@ -114,6 +114,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -261,6 +262,21 @@ def find_sibling_edits(tracks: dict) -> dict[int, list[int]]:
     }
 
 
+def _format_duration(seconds: float) -> str:
+    """Renders as "2m 15s", "45s", or "1h 05m" - seconds precision
+    under a minute, minutes precision above it (a countdown ticking
+    "1h 5m 23s, 1h 5m 22s, ..." reads as more precise than the
+    underlying estimate actually is)."""
+    seconds = max(0, round(seconds))
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
 # Inline CSS grid instead of a flex row - every candidate row gets the
 # exact same column widths regardless of whether that particular row
 # has a category picker or a warning icon, so the checkbox/label/bar/
@@ -323,7 +339,16 @@ def build_ui() -> None:
         # stale "update available" for a version that's already applied.
         "model_check_results": {},
     }
-    progress = {"current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None, "rendered": -1, "stopping": False}
+    progress = {
+        "current": 0, "total": 0, "phase": "", "artist": "", "title": "", "result": None,
+        "rendered": -1, "stopping": False,
+        # time.monotonic() timestamp of when the *current phase*
+        # started - not wall-clock time, since a system clock change
+        # mid-run shouldn't skew the estimate. Used by update_progress()
+        # below for a live countdown; None means "no phase running, or
+        # too early in one to estimate yet."
+        "phase_started_at": None,
+    }
     stop_event = threading.Event()
     genre_weights = scoring.load_weights()  # just for the "cleared the N% bar" badge text, per kind
     mood_weights = scoring.load_weights(mood_plan.WEIGHTS_PATH)
@@ -608,9 +633,25 @@ def build_ui() -> None:
         if not progress["total"]:
             return
         suffix = "  (stopping after this track...)" if progress["stopping"] else ""
+        eta = ""
+        # Needs at least one finished track in this phase to have any
+        # real per-track timing to extrapolate from - before that,
+        # showing a guess (e.g. off the very first track's cost alone,
+        # which often eats extra one-time overhead like a model's first
+        # load) would read as confident when it isn't. Re-anchored off
+        # the phase's own start time and recomputed every tick (this
+        # runs on the same 0.3s ui.timer as everything else here), not
+        # just when a new track finishes, so it actually ticks down
+        # smoothly like a countdown rather than jumping once per track.
+        if progress["current"] > 0 and progress["phase_started_at"] is not None:
+            elapsed = time.monotonic() - progress["phase_started_at"]
+            avg_per_track = elapsed / progress["current"]
+            remaining = avg_per_track * progress["total"] - elapsed
+            if remaining > 0:
+                eta = f"  · ~{_format_duration(remaining)} left"
         progress_label.text = (
             f"[{progress['phase']} {progress['current']}/{progress['total']}] "
-            f"{progress['artist']} — {progress['title']}{suffix}"
+            f"{progress['artist']} — {progress['title']}{suffix}{eta}"
         )
         progress_bar.value = progress["current"] / progress["total"]
         # Only redraw the preview when a new track's result has actually
@@ -1127,7 +1168,10 @@ def build_ui() -> None:
         stop_button.visible = True
         stop_button.enable()
         progress_bar.visible = True
-        progress.update(current=0, total=0, phase="", artist="", title="", result=None, rendered=-1, stopping=False)
+        progress.update(
+            current=0, total=0, phase="", artist="", title="", result=None,
+            rendered=-1, stopping=False, phase_started_at=None,
+        )
         preview_container.clear()
         progress_label.text = "starting..."
 
@@ -1165,7 +1209,7 @@ def build_ui() -> None:
         resuming = scan_mode == "all"
 
         if include_genre:
-            progress.update(phase="Genre", current=0, total=0, rendered=-1)
+            progress.update(phase="Genre", current=0, total=0, rendered=-1, phase_started_at=time.monotonic())
             try:
                 new_genre_plan = await run.io_bound(
                     genre_plan_module.generate_plan,
@@ -1196,7 +1240,7 @@ def build_ui() -> None:
                 # to stop.
                 stopped = True
             else:
-                progress.update(phase="Mood", current=0, total=0, rendered=-1)
+                progress.update(phase="Mood", current=0, total=0, rendered=-1, phase_started_at=time.monotonic())
                 try:
                     new_mood_plan = await run.io_bound(
                         mood_plan.generate_plan,
@@ -1222,7 +1266,7 @@ def build_ui() -> None:
                 # starts at all either.
                 stopped = True
             else:
-                progress.update(phase="Charts", current=0, total=0, rendered=-1)
+                progress.update(phase="Charts", current=0, total=0, rendered=-1, phase_started_at=time.monotonic())
                 try:
                     new_charts_plan = await run.io_bound(
                         charts_plan_module.generate_plan,

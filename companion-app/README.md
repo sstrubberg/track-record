@@ -63,9 +63,18 @@ writes anything - "Apply Tags" is the only action that does:
    Charts have no such picker - each has only one source to toggle.)
    Click "Generate Plan". With more than one action checked, they run
    as sequential phases (Genre, then Mood, then Charts), each with its
-   own live per-track progress; "Stop" aborts after the current track
-   and keeps whatever was already planned, skipping every not-yet-
-   started phase entirely rather than starting them after a stop. A
+   own live per-track progress, plus a countdown ("~2m 15s left") once
+   at least one track in the current phase has finished - extrapolated
+   from that phase's own average time per track so far, re-anchored
+   off the phase's start time and recomputed continuously rather than
+   only when a new track finishes, so it actually ticks down smoothly.
+   Only ever covers the phase currently running, not the whole
+   multi-phase run - Genre/Subgenre, Mood/Theme, and Charts cost very
+   different amounts per track, so a phase not yet started has nothing
+   real to extrapolate its own pace from yet. "Stop" aborts after the
+   current track and keeps whatever was already planned, skipping
+   every not-yet-started phase entirely rather than starting them
+   after a stop. A
    capped "whole library" run remembers where it left off, per action
    except Charts - a caption under the scan controls reads "X of Y
    tracks scanned" once a cursor exists, with its own "Reset"

@@ -546,7 +546,9 @@ and auto-include behavior) but not yet used for a real Apply Tags run.
   `python track_record.py` is the only command any action needs): the
   whole workflow lives here - one "Generate Plan" with checkboxes for
   which action(s) to include, live per-track progress across however
-  many phases are selected (never writes anything), each track's
+  many phases are selected (never writes anything) with a countdown
+  once the current phase has a real per-track pace to extrapolate
+  from, each track's
   candidates split into Genre/Subgenre, Mood/Theme, and/or Charts
   sub-groups (only whichever have candidates for that track) so they
   never blur together, global and per-sub-group "Select all", a
