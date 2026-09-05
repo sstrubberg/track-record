@@ -45,29 +45,61 @@ def _save_log(entries: list[dict], log_file: Path = LOG_FILE) -> None:
     log_file.write_text(json.dumps(entries, indent=1))
 
 
-def _merge_rows(rows: list[dict], live_tags: dict[int, list[int]]) -> list[dict]:
+def _merge_rows(rows: list[dict], live_tags: dict[int, list[int]]) -> dict:
     """Group rows by track, merge new tag ids into each track's live
-    tags, write only tracks that actually change. Returns log entries
-    for whatever was actually applied."""
+    tags, write only tracks that actually change.
+
+    Returns {"entries": [...] (per track actually written - tags_added
+    is only the genuinely-new tag names), "resolved_pairs": {(track_id,
+    tag), ...} (every row that's now correctly reflected in Lexicon,
+    whether this call just wrote it or it was already there before this
+    call - safe for a caller to stop treating as still needing a
+    decision), "failed": [{"track_id", "artist", "title", "error"}]
+    (tracks that genuinely could not be written - not found in the
+    library, or Lexicon rejected every PATCH shape - a caller should
+    keep these flagged, not silently drop them)}.
+
+    Used to just print() a failure and move on, with nothing at all
+    telling the caller it happened - review_ui.py's save() had no way
+    to surface it, and no way to tell "genuinely failed" apart from
+    "nothing needed writing," so a row belonging to either case stayed
+    checked and un-prunable forever, endlessly re-triggering "N checked
+    tag(s) haven't been saved yet" even after a DJ had, in fact, just
+    applied everything Lexicon would accept (confirmed: this is exactly
+    what a real DJ hit - a write failure or an already-applied tag
+    sitting in an otherwise-successful save, invisible either way).
+    """
     by_track: dict[int, list[dict]] = {}
     for row in rows:
         by_track.setdefault(row["track_id"], []).append(row)
 
     entries = []
+    resolved_pairs: set[tuple[int, str]] = set()
+    failed: list[dict] = []
     shape = None  # negotiated once, reused across every write this call
     for track_id, track_rows in by_track.items():
+        artist, title = track_rows[0].get("artist"), track_rows[0].get("title")
         existing = live_tags.get(track_id)
         if existing is None:
             print(f"  track {track_id} not found in library - skipping")
+            failed.append({"track_id": track_id, "artist": artist, "title": title, "error": "track not found in library"})
             continue
+
         add_ids = sorted({r["tag_id"] for r in track_rows if r["tag_id"] not in existing})
         if not add_ids:
+            # Every checked tag on this track was already there before
+            # this call - a previous partial save, or the DJ tagged it
+            # manually in Lexicon in between. Nothing to write, but
+            # every one of these rows is genuinely resolved: the tag
+            # really is on the track, just not because of this call.
+            resolved_pairs.update((track_id, r["tag"]) for r in track_rows)
             continue
 
         merged = existing + add_ids
         ok, used_shape, detail = lexicon_client.write_track_tags(track_id, merged, shape=shape)
         if not ok:
             print(f"  failed on track {track_id}: {detail}")
+            failed.append({"track_id": track_id, "artist": artist, "title": title, "error": detail})
             continue
         shape = used_shape
         live_tags[track_id] = merged
@@ -75,29 +107,36 @@ def _merge_rows(rows: list[dict], live_tags: dict[int, list[int]]) -> list[dict]
         entries.append({
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "track_id": track_id,
-            "artist": track_rows[0].get("artist"),
-            "title": track_rows[0].get("title"),
+            "artist": artist,
+            "title": title,
             "tags_added": sorted({r["tag"] for r in track_rows if r["tag_id"] in add_ids}),
         })
-    return entries
+        # Every row on a successfully-written track is resolved, not
+        # just the ones that triggered a new write this time - a row
+        # whose own tag_id happened to already be present, sitting
+        # alongside others on the same track that weren't, is just as
+        # done as the ones that just got added.
+        resolved_pairs.update((track_id, r["tag"]) for r in track_rows)
+
+    return {"entries": entries, "resolved_pairs": resolved_pairs, "failed": failed}
 
 
-def apply_auto(plan: dict, log_file: Path = LOG_FILE) -> list[dict]:
-    """Apply every row in plan['auto'] immediately. Returns the log
-    entries for whatever was actually written - each one names the
-    track and exactly which tags landed on it, since "auto" means no
-    review screen ever shows this, and the caller (review_ui.py, or
-    the __main__ block below) needs something to display in its place."""
+def apply_auto(plan: dict, log_file: Path = LOG_FILE) -> dict:
+    """Apply every row in plan['auto'] immediately. Returns _merge_rows'
+    own result dict ("entries", "resolved_pairs", "failed") - "auto"
+    means no review screen ever shows this, and the caller (review_ui.py,
+    or the __main__ block below) needs something to display in its
+    place, including anything that failed."""
     rows = plan.get("auto", [])
     if not rows:
-        return []
+        return {"entries": [], "resolved_pairs": set(), "failed": []}
     live_tags = {t["id"]: list(t.get("tags") or []) for t in lexicon_client.fetch_library()}
-    entries = _merge_rows(rows, live_tags)
-    if entries:
+    result = _merge_rows(rows, live_tags)
+    if result["entries"]:
         log = _load_log(log_file)
-        log.extend(entries)
+        log.extend(result["entries"])
         _save_log(log, log_file)
-    return entries
+    return result
 
 
 def apply_decisions(
@@ -127,8 +166,13 @@ def apply_decisions(
     entirely. Either way, re-creating the same label rather than
     reusing it would leave a duplicate Custom Tag behind.
 
-    Returns {"entries": [...] (per _merge_rows - what was actually
-    written), "failed_creates": [{"tag": str, "error": str}, ...]}.
+    Returns _merge_rows' own result dict ("entries", "resolved_pairs",
+    "failed" - see its docstring), plus "failed_creates":
+    [{"tag": str, "error": str}, ...] for a proposed tag that couldn't
+    even be created in the first place, kept separate from "failed"
+    since it's a different failure mode (a brand-new tag Lexicon
+    rejected, vs. an existing tag Lexicon wouldn't let this write
+    attach to a track).
     """
     live_tags = {t["id"]: list(t.get("tags") or []) for t in lexicon_client.fetch_library()}
     _, by_label = lexicon_client.fetch_tag_index()
@@ -157,12 +201,12 @@ def apply_decisions(
                     continue
         resolved_create.append({**row, "tag_id": created_ids[key]})
 
-    entries = _merge_rows(approved_review + resolved_create, live_tags)
-    if entries:
+    result = _merge_rows(approved_review + resolved_create, live_tags)
+    if result["entries"]:
         log = _load_log(log_file)
-        log.extend(entries)
+        log.extend(result["entries"])
         _save_log(log, log_file)
-    return {"entries": entries, "failed_creates": failed_creates}
+    return {**result, "failed_creates": failed_creates}
 
 
 def main():
@@ -175,10 +219,12 @@ def main():
         raise SystemExit(f"no {plan_path} - run plan.py first")
     plan = json.loads(plan_path.read_text())
 
-    entries = apply_auto(plan)
-    print(f"applied {len(entries)} track(s) from the auto bucket")
-    for e in entries:
+    result = apply_auto(plan)
+    print(f"applied {len(result['entries'])} track(s) from the auto bucket")
+    for e in result["entries"]:
         print(f"  {e['artist']} - {e['title']}: {', '.join(e['tags_added'])}")
+    for f in result["failed"]:
+        print(f"  FAILED {f['artist']} - {f['title']}: {f['error']}")
     print(
         f"{len(plan.get('review', []))} review row(s) and "
         f"{len(plan.get('create', []))} create row(s) still need review_ui.py"

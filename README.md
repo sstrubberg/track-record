@@ -486,6 +486,15 @@ already exists is reused rather than recreated, even for a "propose a
 new tag" row - matters on a retried save, so nothing ends up
 duplicated in Lexicon's tag list.
 
+A checked row only ever clears from the review screen once it's
+genuinely resolved - either just written, or found to already be on
+the track (a previous partial save, or added by hand in Lexicon in
+between) - never just because Apply Tags was clicked. A track Lexicon
+actually refused to write to (every PATCH shape rejected, or the track
+no longer exists) stays checked and is named in the result message,
+rather than silently vanishing into a bare server-side log line with
+no way to tell it apart from "nothing needed doing."
+
 `apply.py`'s own `apply_auto()` (`python apply.py` from the CLI)
 applies a plan's auto-include tier immediately, no review step - a
 deliberately different, opt-in tool for scripted/headless use (e.g. a

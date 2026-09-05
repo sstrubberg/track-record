@@ -20,7 +20,7 @@ PLAN_FILE = Path(__file__).resolve().parent / "charts_plan.json"
 LOG_FILE = Path(__file__).resolve().parent / "charts_applied_log.json"
 
 
-def apply_auto(plan: dict) -> list[dict]:
+def apply_auto(plan: dict) -> dict:
     return apply.apply_auto(plan, log_file=LOG_FILE)
 
 
@@ -38,10 +38,12 @@ def main():
         raise SystemExit(f"no {plan_path} - run charts_plan.py first")
     plan = json.loads(plan_path.read_text())
 
-    entries = apply_auto(plan)
-    print(f"applied {len(entries)} track(s) from the auto bucket")
-    for e in entries:
+    result = apply_auto(plan)
+    print(f"applied {len(result['entries'])} track(s) from the auto bucket")
+    for e in result["entries"]:
         print(f"  {e['artist']} - {e['title']}: {', '.join(e['tags_added'])}")
+    for f in result["failed"]:
+        print(f"  FAILED {f['artist']} - {f['title']}: {f['error']}")
     print(
         f"{len(plan.get('review', []))} review row(s) and "
         f"{len(plan.get('create', []))} create row(s) still need review_ui.py"

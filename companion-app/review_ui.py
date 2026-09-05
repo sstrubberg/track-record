@@ -1073,35 +1073,54 @@ def build_ui() -> None:
             # double-count it as "2 tracks" rather than the 1 it is.
             touched_tracks = {e["track_id"] for r in results.values() for e in r["entries"]}
             n_tags = sum(len(e["tags_added"]) for r in results.values() for e in r["entries"])
-            failed = [f for r in results.values() for f in r["failed_creates"]]
+            failed_creates_all = [f for r in results.values() for f in r["failed_creates"]]
+            # Distinct from failed_creates_all: a tag that already
+            # exists (or just got created above) but that Lexicon then
+            # refused to actually attach to a track - see apply.py's
+            # _merge_rows docstring. Used to be swallowed entirely (a
+            # bare print() server-side, nothing telling the DJ or this
+            # screen it happened at all) - a row like that stayed
+            # checked forever with zero explanation, which is exactly
+            # what a real DJ hit.
+            failed_writes_all = [f for r in results.values() for f in r["failed"]]
             msg = f"Applied {n_tags} tag(s) across {len(touched_tracks)} track(s)"
             if skipped_no_category:
                 msg += f" - skipped {skipped_no_category} new-tag row(s) with no category chosen"
-            if failed:
-                names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed)
+            if failed_creates_all:
+                names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed_creates_all)
                 msg += f" - failed to create: {names}"
-            notify(msg, type="positive" if not failed else "warning")
+            if failed_writes_all:
+                names = ", ".join(f"{f['artist']} — {f['title']} ({f['error']})" for f in failed_writes_all)
+                msg += f" - failed to write: {names}"
+            any_write_failed = bool(failed_creates_all or failed_writes_all)
+            notify(msg, type="positive" if not any_write_failed else "warning")
 
-            # Drop whatever was actually written from the in-memory
-            # plans - otherwise those rows sit there still checked, the
-            # review screen keeps showing tags that already made it to
-            # Lexicon, and generate()'s "you have unsaved checked rows"
-            # guard falsely trips on a plan that was, in fact, just
-            # saved. Rows that were checked but skipped (no category) or
-            # failed to create are deliberately left in place, still
-            # checked - they still need a decision, nothing happened.
+            # Drop whatever's now correctly reflected in Lexicon from
+            # the in-memory plans - otherwise those rows sit there
+            # still checked, the review screen keeps showing tags that
+            # already made it to Lexicon (or were already there before
+            # this save), and generate()'s "you have unsaved checked
+            # rows" guard falsely trips on a plan that was, in fact,
+            # fully resolved. resolved_pairs (not just entries' own
+            # tags_added) covers both a freshly-written tag and one
+            # that turned out to already be on the track - either way,
+            # nothing about that row still needs a decision. Rows
+            # checked but skipped (no category), or belonging to a
+            # track apply.py's _merge_rows reported as failed, are
+            # deliberately left in place, still checked - those
+            # genuinely still need a decision or a retry.
             plans = {"genre": state["genre_plan"], "mood": state["mood_plan"], "charts": state["charts_plan"]}
             changed = False
             for kind, result in results.items():
                 plan = plans[kind]
                 if not plan:
                     continue
-                applied_pairs = {(e["track_id"], tag) for e in result["entries"] for tag in e["tags_added"]}
-                if not applied_pairs:
+                resolved_pairs = result["resolved_pairs"]
+                if not resolved_pairs:
                     continue
                 changed = True
                 for bucket in ("auto", "review", "create"):
-                    plan[bucket] = [r for r in plan.get(bucket, []) if (r["track_id"], r["tag"]) not in applied_pairs]
+                    plan[bucket] = [r for r in plan.get(bucket, []) if (r["track_id"], r["tag"]) not in resolved_pairs]
             if changed:
                 review_section.refresh()
 
