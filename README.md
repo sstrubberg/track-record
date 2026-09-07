@@ -298,6 +298,18 @@ sub-group: "no chart match found," "title looks like a mashup/
 transition/blend - skipped," or "already tagged: X, Y" if this track
 already carries every chart tag the match would have proposed.
 
+Known, accepted gap: nothing before August 4, 1958 is covered at all -
+that's when the Hot 100 itself launched (confirmed directly against
+the cache), unifying what had been several competing Billboard singles
+charts ("Best Sellers in Stores," "Most Played by Jockeys," ...) that
+this tool has never tracked and doesn't have a data source for
+(Billboard.com's own current site doesn't expose those defunct
+formats). A pre-1958 hit reads as "no chart match found" same as a
+song that genuinely never charted - e.g. Elvis Presley's "Suspicious
+Minds" (1969) matches correctly, but "Hound Dog"/"Don't Be
+Cruel"/"Blue Suede Shoes"/"All Shook Up" (1956-57) all predate Hot 100
+coverage entirely and never will.
+
 Matching against a chart record requires a real
 `companion-app/charts/chart_map.json` mapping this library's own tag
 labels to Billboard chart slugs - the built-in fallback
