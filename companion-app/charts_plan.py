@@ -88,6 +88,37 @@ def _import_billboard_tag():
     bt.CACHE = CHARTS_DIR / "billboard_cache.json"
     bt.CHART_MAP_FILE = CHARTS_DIR / "chart_map.json"
     bt.CHART_MAP = bt.load_chart_map()  # re-read now that CHART_MAP_FILE is correct
+
+    # ARTIST_ALIASES corrections for this library - same mechanism
+    # billboard_tag.py already ships two entries for ("hall" ->
+    # "daryl hall john oates", "janet jackson" -> "janet"), extended
+    # here rather than in billboard_tag.py itself (stays untouched).
+    # ARTIST_SPLIT treats both a bare comma and "&"/"and" as hard
+    # split points - a band whose own name has both ("Earth, Wind &
+    # Fire") reduces to a different fragment depending on which
+    # spelling shows up: Billboard's own dataset spells it with the
+    # comma ("Earth, Wind & Fire" -> splits at the comma -> "earth"),
+    # this library spells it without one ("Earth Wind & Fire" ->
+    # splits at "&" -> "earth wind") - two different keys for the same
+    # band, confirmed directly: only "Boogie Wonderland" partially
+    # matched (fuzzy, 90%) while September/Fantasy/Shining Star/Let's
+    # Groove matched nothing at all. Aliasing both reduced fragments to
+    # the same canonical string fixes matching going forward, but only
+    # takes effect on keys computed *after* this patch - the already-
+    # built cache still has the old "earth|<title>" keys baked in from
+    # before, so refresh_cache() below always re-runs phase_load after
+    # this to rebuild them consistently.
+    #
+    # Collision risk this accepts: a different, unrelated real artist
+    # who also normalizes down to "earth" (a band literally named
+    # "Earth" exists, e.g.) would get misattributed to Earth, Wind &
+    # Fire's chart history instead. Checked directly against this
+    # cache's real data - every "earth|..." key already only ever
+    # belongs to Earth, Wind & Fire - but a future dataset addition
+    # could reintroduce the collision.
+    bt.ARTIST_ALIASES["earth"] = "earth wind fire"
+    bt.ARTIST_ALIASES["earth wind"] = "earth wind fire"
+
     return bt
 
 
