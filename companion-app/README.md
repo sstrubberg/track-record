@@ -134,8 +134,18 @@ writes anything - "Apply Tags" is the only action that does:
 3. Check what you agree with (or leave the pre-checked ones as they
    are) and hit **"Apply Tags"** - the one action that writes to
    Lexicon, splitting whatever's checked by kind under the hood and
-   reporting one combined result. Checked-but-unsaved state survives
-   closing and reopening the app, and generating a new plan while
+   reporting one combined result. Applying writes the updated plan back
+   to its own JSON file immediately, not just to memory - a resolved row
+   (written, or found already on the track) is gone for good the moment
+   it's applied, not just for the rest of this window's session. That
+   matters because the window itself doesn't always survive a break:
+   stepping away for a while can disconnect the native window's own
+   connection to its background process, and reconnecting past a point
+   forces a full reload - everything not yet written to a file (which
+   scan mode is picked, an in-progress but unapplied check) resets, the
+   same as quitting and relaunching would. Checked-but-unsaved state
+   otherwise survives closing and reopening the app (it's the plan
+   file's own contents, read back in), and generating a new plan while
    anything is still checked asks for confirmation before discarding
    it.
 

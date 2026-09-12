@@ -507,6 +507,20 @@ no longer exists) stays checked and is named in the result message,
 rather than silently vanishing into a bare server-side log line with
 no way to tell it apart from "nothing needed doing."
 
+That resolution is written straight back to the plan's own JSON file
+the moment Apply Tags finishes, not just held in memory for the rest
+of the window's session. Real DJ use surfaced why that matters: a
+native window that's stepped away from for a while can lose its
+connection to the background process entirely, and reconnecting past
+`reconnect_timeout` forces a full reload - `build_ui()` runs again from
+scratch, reading the plan files fresh. Before this, that meant rows
+already successfully applied minutes earlier came back looking
+unsaved, because the only place they'd ever been marked resolved was
+this now-discarded session's memory. `reconnect_timeout` itself was
+also raised (30s -> 30min) so an ordinary few-minutes break doesn't
+force that reload at all - the file-write is the fix that holds either
+way, including a real restart or a longer absence than that.
+
 `apply.py`'s own `apply_auto()` (`python apply.py` from the CLI)
 applies a plan's auto-include tier immediately, no review step - a
 deliberately different, opt-in tool for scripted/headless use (e.g. a

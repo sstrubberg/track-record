@@ -1110,6 +1110,20 @@ def build_ui() -> None:
             # deliberately left in place, still checked - those
             # genuinely still need a decision or a retry.
             plans = {"genre": state["genre_plan"], "mood": state["mood_plan"], "charts": state["charts_plan"]}
+            # Same paths group_by_track()'s callers already load from at
+            # startup - see PLAN_FILE section below. Writing the pruned
+            # plan back here (not just mutating the in-memory dict) is
+            # what actually makes an apply durable: without it, only
+            # *this* browser session's memory ever reflected the prune,
+            # and NiceGUI's own reconnect_timeout (see ui.run() below)
+            # means any real disconnect - a DJ stepping away for a few
+            # minutes, a restart, a crash - forces a brand new build_ui()
+            # that re-reads these files fresh. Confirmed directly: a real
+            # DJ applied 221 tags, stepped away ~5-10 minutes, and came
+            # back to the exact same 221 tags showing as still-unsaved -
+            # the file on disk had never changed, so the fresh session
+            # had no way to know they were already done.
+            plan_files = {"genre": GENRE_PLAN_FILE, "mood": MOOD_PLAN_FILE, "charts": CHARTS_PLAN_FILE}
             changed = False
             for kind, result in results.items():
                 plan = plans[kind]
@@ -1121,6 +1135,7 @@ def build_ui() -> None:
                 changed = True
                 for bucket in ("auto", "review", "create"):
                     plan[bucket] = [r for r in plan.get(bucket, []) if (r["track_id"], r["tag"]) not in resolved_pairs]
+                plan_files[kind].write_text(json.dumps(plan, indent=1))
             if changed:
                 review_section.refresh()
 
@@ -1694,15 +1709,33 @@ def main():
         window_size=(1000, 750),
         reload=False,
         title="Track Record",
-        # discogs-maest/mood-model inference briefly saturates every CPU
-        # core, which can delay the UI's own websocket heartbeat long
-        # enough that the client decides the connection dropped
-        # ("Connection lost / trying to reconnect"). Nothing is actually
-        # wrong - the plan generation keeps running in its own thread
-        # regardless - so give the heartbeat enough slack (ping_interval/
-        # ping_timeout are derived from this, see NiceGUI's nicegui.py)
-        # that a single track's worth of CPU load never trips it.
-        reconnect_timeout=30,
+        # Two separate reasons this needs real slack, not NiceGUI's own
+        # 3s default: discogs-maest/mood-model inference briefly
+        # saturates every CPU core, which can delay the UI's own
+        # websocket heartbeat long enough that the client decides the
+        # connection dropped ("Connection lost / trying to reconnect")
+        # even though nothing is actually wrong - plan generation keeps
+        # running in its own thread regardless (ping_interval/
+        # ping_timeout are derived from this, see NiceGUI's nicegui.py).
+        # More importantly: this is a native window a DJ steps away
+        # from mid-session - macOS backgrounds/throttles it, the
+        # websocket actually disconnects, and once reconnect_timeout
+        # elapses NiceGUI garbage-collects the whole server-side
+        # session. Reconnecting past that point fails its handshake and
+        # NiceGUI's own client JS does a bare `window.location.reload()`
+        # - confirmed directly in its source - which reruns build_ui()
+        # from scratch: every widget resets to its default (scan mode
+        # snaps back to "Whole library"), and whatever was checked is
+        # gone. 30s survives only a few seconds of being backgrounded;
+        # a DJ checking something in Lexicon for a few minutes blew
+        # right through it in real use. 1800s (30 min) covers a real
+        # break without keeping a permanently-abandoned session's memory
+        # around for long - the safety net if a DJ's away even longer
+        # than that is the other half of this fix: save() now writes
+        # its pruned plan back to disk immediately, so even a full
+        # reload can no longer resurrect rows already applied to
+        # Lexicon as if they were still pending.
+        reconnect_timeout=1800,
     )
 
 
