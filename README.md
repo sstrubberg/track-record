@@ -266,6 +266,17 @@ honest consequence of that, not a claim that this source deserves more
 trust - expect most Mood/Theme runs to lean heavily on the review
 screen rather than auto-include.
 
+Occasionally a track's *every* one of the 56 classes falls under
+`fetch/audio_model_mood.py`'s own confidence floor (5%), and nothing at
+all comes back - not an error, just the model being genuinely uncertain
+about that particular recording (confirmed directly: Little Richard's
+"Tutti Frutti" - 1955, well outside the model's more modern-leaning
+MTG-Jamendo training set - scored "energetic" at 4.73% as its own top
+guess, just under the floor). Same treatment as Charts' equivalent gap:
+a track that already shows in the review list via another action, but
+has nothing from Mood/Theme, gets a small note explaining why instead
+of the sub-group just silently not appearing.
+
 ### Charts matching
 
 Genuinely different from the other two: not inferring anything from

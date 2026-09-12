@@ -97,7 +97,11 @@ writes anything - "Apply Tags" is the only action that does:
    a mashup/transition/blend title got skipped, or it already carries
    every chart tag the match would have proposed - since most tracks
    genuinely never charted at all, and that's expected, not a sign
-   Charts isn't working. Tags confident enough to auto-include
+   Charts isn't working. Mood/Theme gets the same treatment on the rare
+   track where every one of its 56 mood/theme classes falls under the
+   model's own confidence floor - "no mood/theme guess cleared the
+   model's own confidence floor" rather than the sub-group just not
+   showing up. Tags confident enough to auto-include
    show up **pre-checked**, marked with a green check and a tooltip
    explaining why - review them like anything else, uncheck one if you
    disagree. Everything else starts unchecked; a global "Select all"

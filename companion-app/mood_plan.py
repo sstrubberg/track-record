@@ -47,19 +47,38 @@ PLAN_FILE = Path(__file__).resolve().parent / "mood_plan.json"
 WEIGHTS_PATH = Path(__file__).resolve().parent / "config" / "mood_weights.yaml"
 
 
-def fetch_candidates(track: dict) -> list[dict]:
+def fetch_candidates(track: dict) -> tuple[list[dict], str | None]:
+    """Returns (candidates, reason) - reason is None when candidates is
+    non-empty, otherwise a short human-readable explanation for why
+    nothing came back, so plan_track() can surface *why* a track got no
+    Mood/Theme rows rather than the section just silently not
+    appearing. This model is a genuinely noisy classifier (see this
+    project's own README on MTG's published PR-AUC), so a track whose
+    every one of the 56 classes falls under fetch_moods()'s own
+    MIN_PROBABILITY floor is a real, unremarkable outcome, confirmed
+    directly against a real track (Little Richard - Tutti Frutti): the
+    model ran cleanly, its own top guess was "energetic" at 4.73% -
+    just under the 5% floor - so every class got filtered and nothing
+    at all came back, with no error anywhere to explain it."""
     location = track.get("location")
     if not location:
-        return []
+        return [], "no audio file location"
     try:
-        return audio_model_mood.fetch_moods(location)
+        candidates = audio_model_mood.fetch_moods(location)
     except Exception as e:
         print(f"    audio_model_mood failed: {e}")
-        return []
+        return [], f"audio analysis failed: {e}"
+    if not candidates:
+        return [], (
+            f"no mood/theme guess cleared the model's own confidence floor "
+            f"({audio_model_mood.MIN_PROBABILITY:.0%}) - a genuinely uncertain "
+            f"track for it, not an error"
+        )
+    return candidates, None
 
 
 def plan_track(track: dict, by_label: dict, weights: dict, suggested_category_id: int | None) -> dict:
-    candidates = fetch_candidates(track)
+    candidates, no_candidates_reason = fetch_candidates(track)
     scored = scoring.score_track(candidates, weights)
     current_tag_ids = set(track.get("tags") or [])
 
@@ -69,6 +88,7 @@ def plan_track(track: dict, by_label: dict, weights: dict, suggested_category_id
     low_conf_threshold = weights.get("low_confidence_threshold", 0)
 
     auto, review, create = [], [], []
+    already_tagged: list[str] = []
     for entry in scored:
         tag_id = lexicon_client.resolve_tag_id(entry["tag"], by_label)
 
@@ -91,6 +111,7 @@ def plan_track(track: dict, by_label: dict, weights: dict, suggested_category_id
             continue
 
         if tag_id in current_tag_ids:
+            already_tagged.append(entry["tag"])
             continue  # already tagged - nothing to do
 
         n_sources = len({c["source"] for c in entry["sources"]})
@@ -110,7 +131,22 @@ def plan_track(track: dict, by_label: dict, weights: dict, suggested_category_id
             row["low_confidence"] = entry["confidence"] < low_conf_threshold
             review.append(row)
 
-    return {"auto": auto, "review": review, "create": create}
+    # Nothing to propose - but *why* matters, same reasoning as
+    # charts_plan.py's own no_match handling: surfaced in the review
+    # screen as a small note next to a track that has candidates from
+    # another action but none from Mood/Theme, instead of that
+    # sub-group just silently never appearing.
+    no_match = None
+    if not auto and not review and not create:
+        if no_candidates_reason:
+            reason = no_candidates_reason
+        elif already_tagged:
+            reason = f"already tagged: {', '.join(sorted(set(already_tagged)))}"
+        else:
+            reason = "no mood/theme candidates found"
+        no_match = {"track_id": track["id"], "artist": track.get("artist"), "title": track.get("title"), "reason": reason}
+
+    return {"auto": auto, "review": review, "create": create, "no_match": no_match}
 
 
 def _resolve_suggested_category(weights: dict, on_status=None) -> int | None:
@@ -211,7 +247,7 @@ def generate_plan(
         tracks = tracks[:limit]
 
     status(f"\nplanning {len(tracks)} track(s)...\n")
-    auto_all, review_all, create_all = [], [], []
+    auto_all, review_all, create_all, no_match_all = [], [], [], []
     stopped = False
     last_scanned_track_id = None
     for i, track in enumerate(tracks, 1):
@@ -223,6 +259,8 @@ def generate_plan(
         auto_all.extend(result["auto"])
         review_all.extend(result["review"])
         create_all.extend(result["create"])
+        if result["no_match"]:
+            no_match_all.append(result["no_match"])
         last_scanned_track_id = track["id"]
         if on_track_planned:
             on_track_planned(i, len(tracks), track, result)
@@ -234,6 +272,10 @@ def generate_plan(
         "auto": auto_all,
         "review": review_all,
         "create": create_all,
+        # One entry per scanned track that got nothing - not shown as
+        # its own row (there's no tag to check), just why. See
+        # review_ui.py's use of this (same idea as charts_plan.py's).
+        "no_match": no_match_all,
         # See plan.py's own generate_plan() - same "advance only as far
         # as actually finished" rationale.
         "last_scanned_track_id": last_scanned_track_id,
@@ -243,7 +285,8 @@ def generate_plan(
 
     status(
         f"\n{len(auto_all)} auto-include, {len(review_all)} need review, "
-        f"{len(create_all)} propose a new tag (pick its category in review_ui.py)"
+        f"{len(create_all)} propose a new tag (pick its category in review_ui.py), "
+        f"{len(no_match_all)} no mood/theme candidates at all"
     )
     status(f"plan -> {path}")
 
@@ -286,6 +329,8 @@ def main():
             print(f"    REVIEW  {row['tag']}  ({row['confidence']:.0%}){flag}")
         for row in result["create"]:
             print(f"    CREATE  {row['tag']}  ({row['confidence']:.0%}) - new tag, needs review")
+        if result["no_match"]:
+            print(f"    ---     {result['no_match']['reason']}")
 
     since_track_id = scan_progress.get_cursor("mood") if args.resume and args.mode == "all" else None
 
