@@ -184,6 +184,26 @@ def _load_chart_index(cache_path: Path | None = None, on_status=None) -> tuple[d
     return chart, chart_keys, slug_to_label
 
 
+def _secondary_artist_keys(bt, artist: str, title: str) -> list[str]:
+    """Lookup keys for every credited artist after the first one, in
+    credit order - "Sting & The Police" gives the key for "The Police"
+    (the first piece, "Sting", is what bt.key() already tried).
+    Splits the same way billboard_tag.py's own norm_artist() does, so
+    "The" prefixes and aliases normalize identically to how the cache's
+    own keys were built."""
+    parts = bt.ARTIST_SPLIT.split(bt.PAREN.sub("", bt._pre(artist)))[1:]
+    primary = bt.norm_artist(artist)
+    norm_t = bt.norm_title(title)
+    keys = []
+    for part in parts:
+        a = bt.norm_artist(part)
+        if a and a != primary:
+            k = f"{a}|{norm_t}"
+            if k not in keys:
+                keys.append(k)
+    return keys
+
+
 def fetch_candidates(
     track: dict, current_tag_names: list[str], chart: dict, chart_keys: list[str], slug_to_label: dict,
 ) -> tuple[list[dict], str | None]:
@@ -231,6 +251,29 @@ def fetch_candidates(
                 hit = process.extractOne(alt, chart_keys, scorer=fuzz.ratio, score_cutoff=bt.FUZZ_THRESHOLD)
                 if hit:
                     match_key, score = hit[0], round(hit[1])
+
+    if not match_key:
+        # Last resort: the *other* credited artists. billboard_tag.py's
+        # key() only ever keeps the first piece of a multi-artist credit
+        # ("Sting & The Police" -> "sting"), which is right when the
+        # first name is the act Billboard filed the song under and wrong
+        # when it isn't - Billboard has "Don't Stand So Close To Me"
+        # under The Police alone, so a library credit of "Sting & The
+        # Police" never looked it up under "police" at all. Aliasing
+        # one name to the other (what ARTIST_ALIASES is for) can't fix
+        # this one: Sting has plenty of solo entries in the same cache,
+        # so "sting" -> "police" would hand them The Police's chart
+        # history. Only reached after every lookup above found
+        # nothing, and the title still has to match, so a different
+        # artist's same-named song is the only way to get this wrong.
+        for alt in _secondary_artist_keys(bt, artist, title):
+            if alt in chart:
+                match_key, score = alt, 100
+                break
+            hit = process.extractOne(alt, chart_keys, scorer=fuzz.ratio, score_cutoff=bt.FUZZ_THRESHOLD)
+            if hit:
+                match_key, score = hit[0], round(hit[1])
+                break
 
     if not match_key:
         return [], "no_match"

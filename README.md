@@ -293,7 +293,17 @@ matches "and"), then try an exact key lookup against the chart cache,
 falling back to a fuzzy match (rapidfuzz, cutoff 88) if nothing exact
 turns up, and a second fallback key (for a bare-slash artist credit
 like "The Jackson 5/The Jacksons") if the primary key finds nothing at
-all, exact or fuzzy. A hit doesn't score one tag at a time the way
+all, exact or fuzzy. As a last resort, a multi-artist credit gets each
+of its *other* artists tried in turn: "Sting & The Police" first looks
+up "sting", which finds nothing because Billboard filed those songs
+under The Police alone, then tries "the police". This is a lookup
+fallback rather than an alias because Sting has plenty of solo chart
+history in the same cache - aliasing his name to the band's would hand
+it to every solo song too. A match found this way still has to clear
+the same fuzzy cutoff on the title, so it lands in the review list
+rather than auto-including whenever the title isn't an exact match
+(a library title missing "To Me" off "Don't Stand So Close To Me",
+say). A hit doesn't score one tag at a time the way
 Genre/Subgenre's sources do - every chart the matched song ever
 appeared on becomes a candidate tag at once, all sharing that one
 match's confidence, since there's no second independent signal per tag
