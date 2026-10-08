@@ -44,14 +44,25 @@ screen:
    to Lexicon entirely through this (`localhost:48624`, no separate
    account or token) - Lexicon has to already be open, every time, for
    any of this to do anything.
-2. **Install and configure the companion app**:
+2. **Install and configure the companion app**, from the repo root:
    ```
+   python3 -m venv .venv            # once - creates the virtual environment
+   source .venv/bin/activate        # puts `python` and `pip` on your PATH
    cd companion-app
    pip install -r requirements.txt
    cp .env.example .env   # fill in DISCOGS_TOKEN - see companion-app/README.md
    ```
-3. **Run it**: `python track_record.py` - one native window, one
-   command, covers Genre/Subgenre, Mood/Theme, and Charts all three.
+   macOS only ships `python3`, not `python` - the bare `python` command
+   used below only exists while this virtual environment is active.
+3. **Run it** - activate the environment first (once per terminal
+   window; skip it if the prompt already shows `(.venv)`), then:
+   ```
+   source .venv/bin/activate        # from the repo root
+   cd companion-app
+   python track_record.py
+   ```
+   One native window, one command, covers Genre/Subgenre, Mood/Theme,
+   and Charts all three.
 
 See [companion-app/README.md](companion-app/README.md) for the full
 walkthrough - what each part of the screen does, the Settings dialog,

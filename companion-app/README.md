@@ -4,9 +4,19 @@ Separate local Python process - see the top-level README for why
 (Lexicon plugins can't spawn processes or load native modules, so this
 is where Essentia and everything else actually runs).
 
+Install into a virtual environment (from the repo root, one time):
+
 ```
+python3 -m venv .venv
+source .venv/bin/activate
+cd companion-app
 pip install -r requirements.txt
 ```
+
+macOS only ships `python3`, not `python`, so every command below that
+says `python` assumes this environment is active - run
+`source ../.venv/bin/activate` from this directory first in any new
+terminal window (the prompt shows `(.venv)` once it's on).
 
 ## Before running anything
 
@@ -36,6 +46,7 @@ never gets committed:
 ## Review UI (Genre/Subgenre, Mood/Theme, and Charts)
 
 ```
+source ../.venv/bin/activate   # skip if the prompt already shows (.venv)
 python track_record.py
 ```
 
