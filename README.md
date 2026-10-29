@@ -320,6 +320,18 @@ appeared on becomes a candidate tag at once, all sharing that one
 match's confidence, since there's no second independent signal per tag
 the way Discogs vs. an audio model are for Genre/Subgenre.
 
+One more wrinkle on the chart side: Billboard spells some acts more
+than one way across its own charts ("'N Sync" on the Hot 100 and Pop
+Airplay, "\*NSYNC" on Rhythmic Airplay), which leaves one song's chart
+history split across two cache keys, each holding only part of it - a
+track matching either one only ever saw the part filed under that
+spelling. So when the chart index is loaded, records whose artist is
+identical apart from spacing, and whose song title matches exactly, are
+merged into one (done in memory, so `billboard_cache.json` stays exactly
+what `billboard_tag.py` built). Checked against the real cache: 45 song
+groups, all genuine same-act splits - NSYNC's whole catalog, L.T.D.,
+Bar-Kays, CeeLo Green, and so on.
+
 Most tracks genuinely have no chart appearance at all - that's the
 normal outcome here, not a sign something's broken, unlike Genre/
 Subgenre or Mood/Theme where *some* candidate (even a low-confidence

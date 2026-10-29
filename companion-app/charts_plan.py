@@ -175,6 +175,10 @@ def _load_chart_index(cache_path: Path | None = None, on_status=None) -> tuple[d
     if extra2:
         status(f"  +{extra2} parenthetical-subtitle title variants indexed")
 
+    merged = _merge_split_artist_records(chart)
+    if merged:
+        status(f"  {merged} songs merged across artist spellings that differ only by spacing")
+
     chart_keys = list(chart.keys())
     slug_to_label: dict[str, str] = {}
     for label, slug in bt.CHART_MAP.items():
@@ -182,6 +186,59 @@ def _load_chart_index(cache_path: Path | None = None, on_status=None) -> tuple[d
     status(f"  {len(chart_keys)} charted songs in cache")
 
     return chart, chart_keys, slug_to_label
+
+
+def _merge_split_artist_records(chart: dict) -> int:
+    """Billboard spells some acts more than one way across its own
+    charts ("'N Sync" on the Hot 100 and Pop Airplay, "*NSYNC" on
+    Rhythmic Airplay), and billboard_tag.py's key() faithfully turns
+    those into two different keys ("n sync|...", "nsync|..."). Each
+    key holds only the charts filed under *its* spelling, so a library
+    track matching either one only ever sees part of the song's chart
+    history - confirmed with "Tearin' Up My Heart": the `nsync` record
+    held only Rhythmic Airplay, which the DJ already had, while Hot 100
+    and Pop Airplay sat under `n sync` where nothing ever looked.
+
+    Merges every group of keys whose artist part is identical once
+    spaces are removed and whose title part matches exactly, giving each
+    key in the group one combined record. Done on the in-memory index
+    rather than in billboard_cache.json, so the cache file stays exactly
+    what billboard_tag.py built and a rebuild can't undo it. Measured
+    against the real cache: 45 song groups, all genuine same-act splits
+    (NSYNC's whole catalog, L.T.D., Bar-Kays, CeeLo Green, Juan Luis
+    Guerra 4.40, ...), no unrelated artists - the title has to match
+    exactly too, so two different acts would have to share both a
+    spaceless name and a song title to be wrongly joined.
+
+    Returns the number of song groups merged."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for k in chart:
+        artist_part, _, title_part = k.partition("|")
+        groups.setdefault((artist_part.replace(" ", ""), title_part), []).append(k)
+
+    n = 0
+    for keys in groups.values():
+        if len(keys) < 2:
+            continue
+        records = {id(chart[k]): chart[k] for k in keys}
+        if len(records) < 2:
+            continue  # same record already registered under several keys
+        combined_charts: dict[str, dict] = {}
+        for rec in records.values():
+            for slug, info in rec["charts"].items():
+                cur = combined_charts.get(slug)
+                if cur is None:
+                    combined_charts[slug] = dict(info)
+                else:
+                    cur["first"] = min(cur["first"], info["first"])
+                    cur["last"] = max(cur["last"], info["last"])
+                    cur["peak"] = min(cur["peak"], info["peak"])
+        base = next(iter(records.values()))
+        combined = {**base, "charts": combined_charts}
+        for k in keys:
+            chart[k] = combined
+        n += 1
+    return n
 
 
 def _secondary_artist_keys(bt, artist: str, title: str) -> list[str]:
