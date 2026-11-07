@@ -63,6 +63,11 @@ screen:
    ```
    One native window, one command, covers Genre/Subgenre, Mood/Theme,
    and Charts all three.
+4. **Optional - a double-clickable icon (macOS)**: with the environment
+   active, `python make_mac_app.py` from `companion-app/` puts a
+   `Track Record.app` on your Desktop that does all of step 3 for you.
+   See [companion-app/README.md](companion-app/README.md#a-double-clickable-app-macos)
+   for what it is and isn't.
 
 See [companion-app/README.md](companion-app/README.md) for the full
 walkthrough - what each part of the screen does, the Settings dialog,
@@ -112,6 +117,7 @@ track-record/
     │                                #   action(s) to include, plus a Settings dialog
     ├── track_record.py             # `python track_record.py` - thin, brand-named
     │                                #   entry point that just calls review_ui.main()
+    ├── make_mac_app.py             # builds a double-clickable Track Record.app (macOS)
     └── config/
         ├── source_weights.yaml    # Genre/Subgenre tuning
         ├── mood_weights.yaml      # Mood/Theme tuning, same shape, separate file

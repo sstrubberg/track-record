@@ -187,6 +187,46 @@ python charts_plan.py --mode recent   #   Charts has no resumable scan position 
 python charts_apply.py
 ```
 
+## A double-clickable app (macOS)
+
+```
+python make_mac_app.py                      # -> ~/Desktop/Track Record.app
+python make_mac_app.py --dest ~/Applications
+```
+
+Run it with the virtual environment active. It writes a small launcher
+app - a record icon, drawn by the script itself, so there are no image
+files to keep in the repo - that does exactly what the three-line
+Terminal version above does: activate the environment, `cd` into
+`companion-app/`, run `track_record.py`.
+
+What that means in practice, since it's a launcher and not a bundled
+copy of Python:
+
+- It points at *this checkout* and *the Python that built it*. There's
+  nothing to rebuild when the code changes, but if the project folder
+  or its virtual environment ever moves, run the script again. It only
+  works on the Mac it was built on.
+- Lexicon still has to be open with its Local API on, same as always.
+- There's no terminal to show an error, so anything the app prints
+  goes to `~/Library/Logs/TrackRecord.log` (rewritten on each launch) -
+  look there if the icon seems to do nothing.
+- Double-clicking while it's already running shows a notification
+  instead of starting a second copy. "Already running" means a Python
+  process actually running `track_record.py` - not merely any process
+  whose command line mentions the file (an editor with it open, a
+  `grep`), which an earlier version of this check wrongly counted and
+  which made the icon silently do nothing.
+- It won't overwrite an app it didn't create.
+- While it runs, the Dock may show Python's generic icon rather than
+  the record - the window is a Python process, and the launcher's own
+  icon only shows on the Desktop/in Finder.
+
+A fully standalone app - one you could hand to another DJ with no setup
+- isn't what this is. That would mean bundling Python and every
+dependency (Essentia and TensorFlow are the hard, large ones) and
+code-signing it so other Macs don't block it, a much bigger job.
+
 ## Settings
 
 A gear icon in the header (next to the notification bell) opens a
