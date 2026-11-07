@@ -20,8 +20,18 @@ a much bigger job than this - see the README.
 
 Anything the app prints, including a startup error, goes to
 ~/Library/Logs/TrackRecord.log, since there's no terminal window to show
-it. Double-clicking while it's already running shows a notification
-instead of starting a second copy.
+it. Double-clicking while it's already running never starts a second
+copy; it asks macOS to bring the existing window forward, which is best
+effort - macOS limits one app raising another, so the window may stay
+where it is.
+
+The launcher only STARTS the server (as a separate background process)
+and exits; it deliberately does not `exec` into Python. An earlier
+version did, which made the Python server itself the process macOS
+associated with the app. Python never checks in as a Mac app, so macOS
+waited on it forever - a second double-click attached to that same
+process (never running the launcher again) and left a Dock icon
+bouncing until the server quit.
 
 The icon is drawn here (a record on a dark tile) with the Cocoa bindings
 the app's own native window already depends on, then packed into an
@@ -57,12 +67,26 @@ LOG="$HOME/Library/Logs/TrackRecord.log"
 # The pattern is anchored to end with "<python> track_record.py", which
 # is how the app's own process (and one started from Terminal) looks.
 if pgrep -f "[Pp]ython[0-9.]* track_record\\.py$" >/dev/null; then
-  osascript -e 'display notification "Track Record is already running." with title "Track Record"'
+  # Already running: bring its window forward instead of starting another.
+  # `open -b` targets the Python GUI app by bundle id, so it can't tell
+  # this window from any other Python app (IDLE, another tool, a leftover
+  # window) - with more than one around it could raise the wrong one, so
+  # it's only done when this is the only one. Otherwise do nothing: no
+  # second copy, no bouncing icon, just no window raised.
+  if [ "$(lsappinfo find bundleid=org.python.python | grep -o 'ASN:' | wc -l)" -eq 1 ]; then
+    open -b org.python.python
+  fi
   exit 0
 fi
 
+# The server is started as a separate background process and this launcher
+# then EXITS - it must not `exec` into Python. exec made the Python server
+# itself the process macOS associates with this app, and Python never
+# checks in as a Mac app, so macOS waited on it forever: the next
+# double-click attached to that same process (never running this script
+# at all) and the Dock icon bounced until the server quit.
 cd "$COMPANION_APP" || exit 1
-exec "$PYTHON" track_record.py >"$LOG" 2>&1
+nohup "$PYTHON" track_record.py >"$LOG" 2>&1 &
 """
 
 
@@ -172,6 +196,10 @@ def build(dest_dir: Path, name: str) -> Path:
         "CFBundleVersion": "1",
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
+        # The launcher only starts the server and exits - it has no window
+        # of its own, so it gets no Dock tile (nothing to bounce). The
+        # window you see is the Python process's, which has its own tile.
+        "LSBackgroundOnly": True,
     }))
 
     launcher = macos / EXECUTABLE

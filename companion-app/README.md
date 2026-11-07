@@ -211,16 +211,26 @@ copy of Python:
 - There's no terminal to show an error, so anything the app prints
   goes to `~/Library/Logs/TrackRecord.log` (rewritten on each launch) -
   look there if the icon seems to do nothing.
-- Double-clicking while it's already running shows a notification
-  instead of starting a second copy. "Already running" means a Python
-  process actually running `track_record.py` - not merely any process
-  whose command line mentions the file (an editor with it open, a
-  `grep`), which an earlier version of this check wrongly counted and
-  which made the icon silently do nothing.
+- Double-clicking while it's already running never starts a second
+  copy, and leaves no stray Dock icon behind. It also asks macOS to
+  bring the existing window forward, but that part is best effort -
+  macOS limits one app raising another's window, and in testing it did
+  not always work - so if a second click seems to do nothing, the app
+  is already open: look for its window in the Dock or with Cmd-Tab.
+  "Already running" means a Python process actually running
+  `track_record.py`, not merely any process whose command line
+  mentions the file (an editor with it open, a `grep`).
+- The launcher only *starts* the server in the background and then
+  exits - it never turns into the server. An earlier version did, and
+  that was a real bug: macOS waited forever for the Python server to
+  "finish launching" as a Mac app (it never does), so a second
+  double-click attached to that process instead of running the
+  launcher, and left a Dock icon bouncing until the app was closed.
 - It won't overwrite an app it didn't create.
-- While it runs, the Dock may show Python's generic icon rather than
-  the record - the window is a Python process, and the launcher's own
-  icon only shows on the Desktop/in Finder.
+- The launcher itself never appears in the Dock. While the app runs,
+  the one Dock icon is the window's own, which is a Python process and
+  may show Python's generic icon rather than the record; the record
+  icon shows on the Desktop and in Finder.
 
 A fully standalone app - one you could hand to another DJ with no setup
 - isn't what this is. That would mean bundling Python and every
