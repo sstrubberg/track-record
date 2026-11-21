@@ -23,7 +23,7 @@ together. Each sub-group gets its own "select all" too.
 
 One rule still holds regardless: "Generate Plan" never writes
 anything, ever - it's always just a preview. Exactly one action writes
-to Lexicon: "Apply Tags", and it writes whatever is checked,
+to Lexicon: "Apply", and it writes whatever is checked,
 splitting checked rows by kind under the hood and calling each
 action's own apply_decisions() - genre_apply for genre rows,
 mood_apply for mood rows, potentially both in one click - then
@@ -102,6 +102,15 @@ Layout:
   one edit reading as "Ballad"/"Vocal") - mood is edit-sensitive in a
   way genre isn't.
 
+The fourth action, Album / Year / Genre fixes (off by default), is a
+different kind of thing from the three tag actions: it *replaces* a
+field's value instead of adding tags, so nothing is ever pre-checked and
+each suggestion is an editable box (old value struck through -> proposed
+value). Its rows are rendered by render_metadata_rows(), applied through
+metadata_apply.py (which re-checks Lexicon first, logs old values for
+undo, and verifies afterward), and kept out of "Select all tags" - it
+has its own select-all. See metadata_plan.py.
+
 Each action's own apply_auto() / `python plan.py` (or `mood_plan.py`)
 + `python apply.py` (or `mood_apply.py`) CLI path still applies a
 plan's auto bucket immediately with no review step - a deliberately
@@ -125,6 +134,8 @@ import charts_apply
 import charts_plan as charts_plan_module
 import config_editor
 import lexicon_client
+import metadata_apply
+import metadata_plan as metadata_plan_module
 import model_versions
 import mood_apply
 import mood_plan
@@ -135,8 +146,9 @@ import scoring
 GENRE_PLAN_FILE = Path(__file__).resolve().parent / "genre_plan.json"
 MOOD_PLAN_FILE = Path(__file__).resolve().parent / "mood_plan.json"
 CHARTS_PLAN_FILE = Path(__file__).resolve().parent / "charts_plan.json"
+METADATA_PLAN_FILE = Path(__file__).resolve().parent / "metadata_plan.json"
 
-KIND_LABELS = {"genre": "Genre / Subgenre", "mood": "Mood / Theme", "charts": "Charts"}
+KIND_LABELS = {"genre": "Genre / Subgenre", "mood": "Mood / Theme", "charts": "Charts", "metadata": "Album / Year / Genre fixes"}
 
 
 def load_plan(path: Path) -> dict | None:
@@ -145,7 +157,10 @@ def load_plan(path: Path) -> dict | None:
     return json.loads(path.read_text())
 
 
-def group_by_track(genre_plan: dict | None, mood_plan_: dict | None, charts_plan: dict | None) -> dict:
+def group_by_track(
+    genre_plan: dict | None, mood_plan_: dict | None, charts_plan: dict | None,
+    metadata_plan: dict | None = None,
+) -> dict:
     """Merge all three actions' plans into one per-track structure, each
     row tagged with `kind` ("genre", "mood", or "charts") so the review
     screen can split a track's expansion into type sub-groups instead
@@ -172,6 +187,9 @@ def group_by_track(genre_plan: dict | None, mood_plan_: dict | None, charts_plan
     add(genre_plan, "genre")
     add(mood_plan_, "mood")
     add(charts_plan, "charts")
+    # Metadata rows are field fixes, not tags: always plain "review" rows
+    # (never auto/create) - add() handles them like any other review row.
+    add(metadata_plan, "metadata")
     return tracks
 
 
@@ -299,6 +317,11 @@ def build_ui() -> None:
         "genre_plan": load_plan(GENRE_PLAN_FILE),
         "mood_plan": load_plan(MOOD_PLAN_FILE),
         "charts_plan": load_plan(CHARTS_PLAN_FILE),
+        "metadata_plan": load_plan(METADATA_PLAN_FILE),
+        # The value typed/edited for each Metadata row, keyed by
+        # (track_id, field) - same survive-a-page-turn reasoning as
+        # "checked" below. Absent = use the row's own suggestion.
+        "metadata_values": {},
         # Checked/category-choice state used to live entirely in the
         # live ui.checkbox/ui.select objects themselves, read directly
         # at save time - fine when every row was always on screen, but
@@ -488,13 +511,23 @@ def build_ui() -> None:
     scan_mode_select.on_value_change(on_scan_mode_change)
 
     with ui.row().classes("items-center gap-4"):
-        ui.label("Tag with:").classes("text-sm text-gray-500")
+        ui.label("Include:").classes("text-sm text-gray-500")
         genre_enabled_checkbox = ui.checkbox("Genre / Subgenre", value=True).props("dense")
         mood_enabled_checkbox = ui.checkbox("Mood / Theme", value=True).props("dense")
         # No per-source checkbox row for Charts, same as Mood/Theme -
         # just the one source (billboard-tag's own chart-cache match),
         # nothing yet to toggle between.
         charts_enabled_checkbox = ui.checkbox("Charts", value=True).props("dense")
+        # Off by default, unlike the three tag actions: it *replaces*
+        # Album / Year / Genre values rather than adding tags, asks
+        # MusicBrainz about each track (~1/second), and is meant for
+        # Incoming / recent scans, not a whole-library pass.
+        metadata_enabled_checkbox = ui.checkbox("Album / Year / Genre fixes", value=False).props("dense")
+        metadata_enabled_checkbox.tooltip(
+            "Finds placeholder or compilation albums, wrong years and junk genres, and proposes "
+            "the original album/year (MusicBrainz) and the artist's usual genre. Nothing is "
+            "pre-checked; you review, edit and apply each fix. Best with Incoming or Most recently added."
+        )
         genre_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
         mood_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
         charts_enabled_checkbox.on_value_change(lambda: scan_progress_caption.refresh())
@@ -619,10 +652,18 @@ def build_ui() -> None:
     def render_preview(result: dict) -> None:
         preview_container.clear()
         with preview_container:
+            for row in result["review"]:
+                if "field" in row:  # a Metadata fix, not a tag
+                    new = row["new"] if row["new"] is not None else "(type one)"
+                    ui.label(
+                        f"FIX  {metadata_plan_module.FIELD_LABELS[row['field']]}: {row['old']} → {new}"
+                    ).classes("text-sm text-blue-500")
             for row in result["auto"]:
                 kind = "AUTO"
                 ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
             for row in result["review"]:
+                if "field" in row:
+                    continue
                 kind = "REVIEW (low confidence)" if row.get("low_confidence") else "REVIEW"
                 ui.label(f"{kind}  {row['tag']}  ({row['confidence']:.0%})").classes(f"text-sm {_KIND_CLASSES[kind]}")
             for row in result["create"]:
@@ -668,7 +709,8 @@ def build_ui() -> None:
         genre_plan = state["genre_plan"]
         mood_plan_ = state["mood_plan"]
         charts_plan = state["charts_plan"]
-        if not genre_plan and not mood_plan_ and not charts_plan:
+        metadata_plan = state["metadata_plan"]
+        if not genre_plan and not mood_plan_ and not charts_plan and not metadata_plan:
             ui.label("No plan yet - click Generate Plan above.").classes("text-gray-500")
             return
 
@@ -680,7 +722,7 @@ def build_ui() -> None:
             "charts": charts_weights.get("auto_include", {}).get("min_confidence", 1.0),
         }
 
-        tracks = group_by_track(genre_plan, mood_plan_, charts_plan)
+        tracks = group_by_track(genre_plan, mood_plan_, charts_plan, metadata_plan)
 
         # {track_id: reason} for every track Charts (or Mood/Theme)
         # scanned but had nothing new to propose for - see
@@ -692,6 +734,10 @@ def build_ui() -> None:
         # existed.
         charts_no_match = {r["track_id"]: r["reason"] for r in (charts_plan or {}).get("no_match", [])}
         mood_no_match = {r["track_id"]: r["reason"] for r in (mood_plan_ or {}).get("no_match", [])}
+        # Tracks whose Album/Year check never happened because MusicBrainz
+        # couldn't be reached (as opposed to checked-and-fine) - see
+        # metadata_plan.py. Same only-shown-if-already-visible rule.
+        metadata_failed = {r["track_id"] for r in (metadata_plan or {}).get("lookup_failed", [])}
 
         # Ensure every row currently in the plan has a checked-default
         # (pre-checked for auto rows, unchecked otherwise) regardless of
@@ -715,6 +761,9 @@ def build_ui() -> None:
             for key in list(d):
                 if key not in valid_keys:
                     del d[key]
+        for key in list(state["metadata_values"]):
+            if (key[0], "metadata", key[1]) not in valid_keys:
+                del state["metadata_values"][key]
         state["expanded_tracks"] &= tracks.keys()
 
         # DJ edits of the same song (e.g. "Promiscuous (Intro Clean)" /
@@ -747,7 +796,27 @@ def build_ui() -> None:
         def toggle_all(e) -> None:
             for track_id, info in tracks.items():
                 for row in info["rows"]:
+                    if row["kind"] == "metadata":
+                        continue  # has its own select-all below - these overwrite values, tags only add
                     state["checked"][(track_id, row["kind"], row["tag"])] = e.value
+            review_section.refresh()
+
+        def metadata_final_value(row: dict):
+            """What would be written for this Metadata row: the typed/
+            edited value if there is one, else the suggestion."""
+            return state["metadata_values"].get((row["track_id"], row["field"]), row["new"])
+
+        metadata_keys = {k for k in valid_keys if k[1] == "metadata"}
+        # Rows with no suggestion AND nothing typed have no value to write -
+        # select-all skips those rather than checking something un-appliable.
+        metadata_selectable = [
+            (tid, row) for tid, info in tracks.items() for row in info["rows"]
+            if row["kind"] == "metadata" and metadata_final_value(row) not in (None, "")
+        ]
+
+        def toggle_all_metadata(e) -> None:
+            for tid, row in metadata_selectable:
+                state["checked"][(tid, "metadata", row["tag"])] = e.value
             review_section.refresh()
 
         # value=False used to be a hard-coded literal here, not derived
@@ -759,7 +828,8 @@ def build_ui() -> None:
         # every row (confirmed directly: the underlying state["checked"]
         # writes always worked correctly - only this checkbox's own
         # displayed value was wrong). Computed fresh each render instead.
-        all_checked = bool(valid_keys) and all(state["checked"].get(key) for key in valid_keys)
+        tag_keys = valid_keys - metadata_keys
+        all_checked = bool(tag_keys) and all(state["checked"].get(key) for key in tag_keys)
         with ui.row().classes("items-center gap-2"):
             # Bare "Select all" didn't say what it was all of - genre,
             # mood, one track, every track, the visible page? It's
@@ -767,8 +837,14 @@ def build_ui() -> None:
             # whole plan (see toggle_all() above), independent of
             # pagination - matching that in the label instead of
             # leaving it to be inferred.
-            ui.checkbox("Select all tags (every track)", value=all_checked, on_change=toggle_all)
-            ui.label(f"{len(tracks)} track(s) with proposed tags - high-confidence ones are pre-checked, review the rest").classes(
+            if tag_keys:
+                ui.checkbox("Select all tags (every track)", value=all_checked, on_change=toggle_all)
+            if metadata_selectable:
+                all_meta_checked = all(state["checked"].get((tid, "metadata", row["tag"])) for tid, row in metadata_selectable)
+                ui.checkbox(
+                    "Select all album / year / genre fixes", value=all_meta_checked, on_change=toggle_all_metadata
+                ).tooltip("Nothing here is pre-checked - these overwrite existing values, so check what you've verified")
+            ui.label(f"{len(tracks)} track(s) with proposals - high-confidence tags are pre-checked, review the rest").classes(
                 "text-gray-500"
             )
 
@@ -943,11 +1019,54 @@ def build_ui() -> None:
                                 if src.get("url"):
                                     item.on("click", lambda url=src["url"]: ui.navigate.to(url, new_tab=True))
 
+        def render_metadata_rows(rows: list[dict]) -> None:
+            """A track's Album / Year / Genre fixes: old value struck
+            through -> an editable box holding the suggestion. Unlike tag
+            rows there's no confidence bar and nothing is pre-checked
+            (these overwrite what's there); typing into a box checks its
+            row. A row with no suggestion starts with an empty box and
+            can't be applied until something is typed."""
+            field_order = {"albumTitle": 0, "year": 1, "genre": 2}
+            rows = sorted(rows, key=lambda r: field_order.get(r["field"], 9))
+            ui.label(KIND_LABELS["metadata"]).classes("text-xs font-bold text-gray-500 uppercase mt-2")
+            for row in rows:
+                key = (row["track_id"], "metadata", row["tag"])
+                value_key = (row["track_id"], row["field"])
+                old_text = str(row["old"]) if row["old"] not in (None, "") else "(empty)"
+                with ui.row().classes(
+                    "w-full items-center gap-3 px-2 py-2 border-b border-gray-100 dark:border-gray-800 no-wrap"
+                ):
+                    cb = ui.checkbox(value=state["checked"][key]).props("dense")
+                    cb.on_value_change(lambda e, key=key: state["checked"].__setitem__(key, e.value))
+                    ui.label(metadata_plan_module.FIELD_LABELS[row["field"]]).classes("w-12 text-sm font-medium")
+                    ui.label(old_text).classes("text-sm text-gray-400 line-through truncate w-56 shrink-0").tooltip(old_text)
+                    ui.icon("arrow_forward").props("size=xs").classes("text-gray-400 shrink-0")
+                    box = ui.input(
+                        value="" if metadata_final_value(row) is None else str(metadata_final_value(row)),
+                        placeholder="no suggestion - type one",
+                    ).props("dense outlined").classes("flex-grow")
+
+                    def on_edit(e, value_key=value_key, key=key, cb=cb) -> None:
+                        state["metadata_values"][value_key] = e.value
+                        if e.value and not state["checked"].get(key):
+                            cb.value = True
+
+                    box.on_value_change(on_edit)
+                    ui.icon("info", color="grey").props("size=xs").classes("shrink-0").tooltip(row["reason"])
+                    url = next((src.get("url") for src in row["sources"] if src.get("url")), None)
+                    if url:
+                        ui.button(icon="open_in_new", on_click=lambda url=url: ui.navigate.to(url, new_tab=True)).props(
+                            "flat round dense size=sm"
+                        ).tooltip("Open the MusicBrainz recording")
+
         for track_id, info in page_tracks:
             genre_rows = [r for r in info["rows"] if r["kind"] == "genre"]
             mood_rows = [r for r in info["rows"] if r["kind"] == "mood"]
             charts_rows = [r for r in info["rows"] if r["kind"] == "charts"]
+            metadata_rows = [r for r in info["rows"] if r["kind"] == "metadata"]
             caption_bits = []
+            if metadata_rows:
+                caption_bits.append(f"{len(metadata_rows)} album/year/genre fix(es)")
             if genre_rows:
                 caption_bits.append(f"{len(genre_rows)} genre")
             if mood_rows:
@@ -961,6 +1080,8 @@ def build_ui() -> None:
                 no_match_bits.append(f"Mood/Theme: {mood_no_match[track_id]}")
             if not charts_rows and track_id in charts_no_match:
                 no_match_bits.append(f"Charts: {charts_no_match[track_id]}")
+            if not metadata_rows and track_id in metadata_failed:
+                no_match_bits.append("Album/Year: MusicBrainz was unreachable - scan again later")
             if no_match_bits:
                 # Ran (this track just wasn't sitting on the other
                 # action(s)' candidates alone) and genuinely found
@@ -991,7 +1112,10 @@ def build_ui() -> None:
             # subsequent open/close of the same track.
             built = {"done": False}
 
-            def populate(container, genre_rows=genre_rows, mood_rows=mood_rows, charts_rows=charts_rows, built=built) -> None:
+            def populate(
+                container, genre_rows=genre_rows, mood_rows=mood_rows, charts_rows=charts_rows,
+                metadata_rows=metadata_rows, built=built,
+            ) -> None:
                 if built["done"]:
                     return
                 built["done"] = True
@@ -1002,6 +1126,8 @@ def build_ui() -> None:
                         render_rows(mood_rows, "Select all mood tags for this track")
                     if charts_rows:
                         render_rows(charts_rows, "Select all chart tags for this track")
+                    if metadata_rows:
+                        render_metadata_rows(metadata_rows)
 
             # Starts open if it was open before whatever triggered this
             # render (see state["expanded_tracks"]'s own comment) -
@@ -1033,10 +1159,19 @@ def build_ui() -> None:
                 "charts": {"review": [], "create": []},
             }
             skipped_no_category = 0
+            approved_metadata: list[dict] = []
+            skipped_empty_metadata = 0
             for track_id, info in tracks.items():
                 for row in info["rows"]:
                     key = (track_id, row["kind"], row["tag"])
                     if not state["checked"].get(key):
+                        continue
+                    if row["kind"] == "metadata":
+                        value = metadata_final_value(row)
+                        if value in (None, "") or not str(value).strip():
+                            skipped_empty_metadata += 1
+                        else:
+                            approved_metadata.append({**row, "new": value})
                         continue
                     if row["is_new"]:
                         category_id = state["category_choice"].get(key, row.get("suggested_category_id"))
@@ -1047,10 +1182,14 @@ def build_ui() -> None:
                     else:
                         approved[row["kind"]]["review"].append(row)
 
-            if not any(approved[k][b] for k in ("genre", "mood", "charts") for b in ("review", "create")):
+            if not approved_metadata and not any(
+                approved[k][b] for k in ("genre", "mood", "charts") for b in ("review", "create")
+            ):
                 msg = "Nothing checked - nothing to save"
                 if skipped_no_category:
                     msg = f"{skipped_no_category} new-tag row(s) checked but no category chosen - pick one first"
+                elif skipped_empty_metadata:
+                    msg = f"{skipped_empty_metadata} album/year/genre row(s) checked but empty - type a value first"
                 notify(msg, type="warning")
                 return
 
@@ -1071,9 +1210,19 @@ def build_ui() -> None:
                 # outside its own per-tag error handling (e.g. Lexicon
                 # unreachable) - without this, that exception would just
                 # die silently server-side and nothing would ever tell
-                # you Apply Tags didn't actually do anything.
+                # you Apply didn't actually do anything.
                 notify(f"Apply failed: {e}", type="negative")
                 return
+
+            # Album / Year / Genre fixes go through their own apply: it
+            # overwrites rather than merges, re-checks each row against
+            # Lexicon first, logs old values for undo, and verifies after.
+            metadata_result = None
+            if approved_metadata:
+                try:
+                    metadata_result = await run.io_bound(metadata_apply.apply_decisions, approved_metadata)
+                except Exception as e:
+                    notify(f"Applying album/year/genre fixes failed: {e}", type="negative")
 
             # Count unique tracks, not len(entries) summed across kinds -
             # a track that got both a genre tag and a mood tag in the
@@ -1091,17 +1240,35 @@ def build_ui() -> None:
             # checked forever with zero explanation, which is exactly
             # what a real DJ hit.
             failed_writes_all = [f for r in results.values() for f in r["failed"]]
-            msg = f"Applied {n_tags} tag(s) across {len(touched_tracks)} track(s)"
-            if skipped_no_category:
-                msg += f" - skipped {skipped_no_category} new-tag row(s) with no category chosen"
-            if failed_creates_all:
-                names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed_creates_all)
-                msg += f" - failed to create: {names}"
-            if failed_writes_all:
-                names = ", ".join(f"{f['artist']} — {f['title']} ({f['error']})" for f in failed_writes_all)
-                msg += f" - failed to write: {names}"
+            msg_parts: list[str] = []
             any_write_failed = bool(failed_creates_all or failed_writes_all)
-            notify(msg, type="positive" if not any_write_failed else "warning")
+            if results or skipped_no_category:
+                msg = f"Applied {n_tags} tag(s) across {len(touched_tracks)} track(s)"
+                if skipped_no_category:
+                    msg += f" - skipped {skipped_no_category} new-tag row(s) with no category chosen"
+                if failed_creates_all:
+                    names = ", ".join(f"'{f['tag']}' ({f['error']})" for f in failed_creates_all)
+                    msg += f" - failed to create: {names}"
+                if failed_writes_all:
+                    names = ", ".join(f"{f['artist']} — {f['title']} ({f['error']})" for f in failed_writes_all)
+                    msg += f" - failed to write: {names}"
+                msg_parts.append(msg)
+            if metadata_result is not None:
+                n_fields = sum(len(e["changes"]) for e in metadata_result["entries"])
+                meta_msg = f"Fixed {n_fields} album/year/genre value(s) across {len(metadata_result['entries'])} track(s)"
+                if metadata_result["entries"]:
+                    meta_msg += " (old values saved - undo with: python metadata_apply.py --undo)"
+                if metadata_result["failed"]:
+                    names = "; ".join(
+                        f"{f['artist']} — {f['title']} ({', '.join(f['fields'])}: {f['error']})"
+                        for f in metadata_result["failed"]
+                    )
+                    meta_msg += f" - not written: {names}"
+                    any_write_failed = True
+                msg_parts.append(meta_msg)
+            if skipped_empty_metadata:
+                msg_parts.append(f"skipped {skipped_empty_metadata} album/year/genre row(s) with nothing typed")
+            notify(" | ".join(msg_parts), type="positive" if not any_write_failed else "warning")
 
             # Drop whatever's now correctly reflected in Lexicon from
             # the in-memory plans - otherwise those rows sit there
@@ -1144,10 +1311,17 @@ def build_ui() -> None:
                 for bucket in ("auto", "review", "create"):
                     plan[bucket] = [r for r in plan.get(bucket, []) if (r["track_id"], r["tag"]) not in resolved_pairs]
                 plan_files[kind].write_text(json.dumps(plan, indent=1))
+            if metadata_result is not None and metadata_result["resolved_pairs"] and state["metadata_plan"]:
+                changed = True
+                plan = state["metadata_plan"]
+                plan["review"] = [
+                    r for r in plan.get("review", []) if (r["track_id"], r["field"]) not in metadata_result["resolved_pairs"]
+                ]
+                METADATA_PLAN_FILE.write_text(json.dumps(plan, indent=1))
             if changed:
                 review_section.refresh()
 
-        ui.button("Apply Tags", on_click=save).props("color=primary").classes("mt-4")
+        ui.button("Apply", on_click=save).props("color=primary").classes("mt-4")
 
     review_section()
 
@@ -1155,9 +1329,27 @@ def build_ui() -> None:
         include_genre = genre_enabled_checkbox.value
         include_mood = mood_enabled_checkbox.value
         include_charts = charts_enabled_checkbox.value
-        if not include_genre and not include_mood and not include_charts:
-            notify("Turn on Genre/Subgenre, Mood/Theme, and/or Charts before generating", type="warning")
+        include_metadata = metadata_enabled_checkbox.value
+        if not include_genre and not include_mood and not include_charts and not include_metadata:
+            notify("Turn on at least one of Genre/Subgenre, Mood/Theme, Charts or Album/Year/Genre fixes before generating", type="warning")
             return
+
+        # Album/Year asks MusicBrainz about every track, ~1 per second.
+        # A whole-library scan with no cap would run for the better part
+        # of an hour - so it has to be asked for deliberately, with a
+        # count, rather than falling out of the default scan mode.
+        if (
+            include_metadata and scan_mode_select.value == "all"
+            and not (limit_input.value and int(limit_input.value) > 0)
+        ):
+            include_metadata = False
+            notify(
+                "Album / Year / Genre fixes skipped: a whole-library scan would query MusicBrainz for every "
+                "track (~1/second). Pick Incoming or Most recently added, or set a count.",
+                type="warning",
+            )
+            if not (include_genre or include_mood or include_charts):
+                return
 
         enabled_sources = {name for name, cb in source_checkboxes.items() if cb.value}
         if include_genre and not enabled_sources:
@@ -1203,6 +1395,9 @@ def build_ui() -> None:
                 state["mood_plan"] = None
             if include_charts:
                 state["charts_plan"] = None
+            if include_metadata:
+                state["metadata_plan"] = None
+                state["metadata_values"].clear()
             review_section.refresh()
 
         stop_event.clear()
@@ -1239,6 +1434,7 @@ def build_ui() -> None:
         new_genre_plan = state.get("genre_plan")
         new_mood_plan = state.get("mood_plan")
         new_charts_plan = state.get("charts_plan")
+        new_metadata_plan = state.get("metadata_plan")
         any_failed = False
         stopped = False
 
@@ -1326,6 +1522,26 @@ def build_ui() -> None:
                     notify(f"Charts plan generation failed: {e}", type="negative")
                     any_failed = True
 
+        if include_metadata:
+            if stop_event.is_set():
+                stopped = True
+            else:
+                progress.update(phase="Album/Year/Genre", current=0, total=0, rendered=-1, phase_started_at=time.monotonic())
+                try:
+                    new_metadata_plan = await run.io_bound(
+                        metadata_plan_module.generate_plan,
+                        limit=limit,
+                        scan_mode=backend_scan_mode,
+                        track_id=picked_track_id,
+                        on_track_planned=on_track_planned,
+                        should_stop=stop_event.is_set,
+                    )
+                    if new_metadata_plan.get("stopped_early"):
+                        stopped = True
+                except Exception as e:
+                    notify(f"Album/Year/Genre scan failed: {e}", type="negative")
+                    any_failed = True
+
         progress_bar.visible = False
         stop_button.visible = False
         generate_button.enable()
@@ -1333,6 +1549,7 @@ def build_ui() -> None:
         state["genre_plan"] = new_genre_plan
         state["mood_plan"] = new_mood_plan
         state["charts_plan"] = new_charts_plan
+        state["metadata_plan"] = new_metadata_plan
         review_section.refresh()
         if resuming:
             # The cursor (and possibly the library itself) just moved -
@@ -1359,10 +1576,19 @@ def build_ui() -> None:
                 f"Charts: {len(charts_counts['auto'])} pre-checked, {len(charts_counts['review'])} review, "
                 f"{len(charts_counts['create'])} new-tag"
             )
+        metadata_counts = new_metadata_plan if include_metadata else None
+        if metadata_counts:
+            n_fixes = len(metadata_counts["review"])
+            n_meta_tracks = len({r["track_id"] for r in metadata_counts["review"]})
+            n_unreachable = len(metadata_counts.get("lookup_failed", []))
+            parts.append(
+                f"Album/Year/Genre: {n_fixes} suggestion(s) on {n_meta_tracks} track(s)"
+                + (f", {n_unreachable} couldn't be looked up (MusicBrainz busy - scan again later)" if n_unreachable else "")
+            )
         summary = " | ".join(parts) if parts else "no plan generated"
         notify(
             f"{'Stopped early' if stopped else 'Plan ready'}: {summary} - nothing written yet, "
-            f"review and click Apply Tags",
+            f"review and click Apply",
             type="negative" if any_failed else ("warning" if stopped else "positive"),
         )
 

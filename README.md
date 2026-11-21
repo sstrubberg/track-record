@@ -24,8 +24,8 @@ everything else, not just edge cases.
 
 ## Scope
 
-Three actions, one shared pipeline shape, all run from the same review
-screen:
+Four actions, run from the same review screen (the first three share one
+pipeline shape and add tags; the fourth fixes fields - see below):
 
 - **Genre/Subgenre** - Discogs + two independent local audio models
 - **Mood/Theme** - a local audio model only (see below for why)
@@ -420,11 +420,52 @@ each ships with sensible defaults and is fully editable, either by
 hand or via the Settings dialog, which is how a different DJ retunes
 the toolkit for their own library without touching code.
 
+### Album / Year / Genre fixes
+
+A fourth action, off by default, aimed at the Incoming bin (or the N most
+recently added) - the tracks you're about to mark done and file. It
+*overwrites* three Lexicon fields rather than adding tags, so it works
+differently from the other three:
+
+- **Convention.** Year is the year the song *first came out*, not a
+  compilation's or reissue's. Album is the original studio album - or the
+  song's own single/EP where it never had one.
+- **What's flagged.** An album that reads like junk (empty, "Untitled",
+  compilation / DJ-pool / karaoke / "(Sped Up)" / reissue-edition titles),
+  an implausible year, or a year that disagrees with MusicBrainz's by two
+  or more years. An album that merely *differs in name* from
+  MusicBrainz's while the year agrees (a single's title vs. its parent
+  album) is left alone - both are defensible. A genre that looks like a
+  pasted tag list ("2000s RnB Pop MSmid CBmid"), or is out of line with the
+  same artist's other filed tracks (Usher: 14 R&B/Soul/Funk, this one
+  Hip-Hop/Rap). Spellings your library already mixes ("Hip-Hop" /
+  "Hip-Hop/Rap", "R&B" / "R&B/Soul/Funk") aren't treated as a mismatch.
+- **Where suggestions come from.** MusicBrainz for album and year (one
+  lookup per track, ~1 per second, retried with backoff and cached on
+  disk); your own filed library for genre (no lookup). Measured against
+  68 hand-verified tracks, MusicBrainz alone gets album *and* year right
+  about half the time, is wrong or only defensible about a quarter, and
+  finds nothing for the rest - soundtrack tie-ins, remixes and obscure
+  tracks especially. So nothing is ever pre-checked: each fix is an
+  editable box (old value struck through, then the suggestion), typing in
+  one checks it, and a field with no suggestion starts empty for you to
+  fill in. A track MusicBrainz couldn't be reached for is reported as
+  such rather than silently passed.
+- **Safe to apply.** Before writing, each row is checked against Lexicon
+  *now* - a value you changed since the plan was generated, or a changed
+  artist, is refused rather than overwritten. Every write's old and new
+  value goes to `metadata_applied_log.json`; `python metadata_apply.py
+  --undo` puts the most recent batch back. After writing, tracks are
+  re-read and compared, so a write that didn't stick is reported.
+- **Not for a whole-library scan.** With "Whole library" and no count it
+  is skipped (with a message) - that would be ~45+ minutes of lookups.
+  Use Incoming, Most recently added, a count, or a single track.
+
 ### Review
 
 One rule for the whole screen: **generating a plan never writes
 anything** - it's always just a preview, and exactly one action
-writes to Lexicon: **"Apply Tags"**, which writes whatever is
+writes to Lexicon: **"Apply"**, which writes whatever is
 checked. Earlier builds had a second write path (an "Apply now"
 button for auto-include tags, gated by a separate "Dry run" checkbox)
 - collapsed into this one, since a DJ shouldn't need two different
@@ -457,7 +498,7 @@ top of its sub-group, since rows are ordered by confidence) - still
 just a checkbox, uncheck it like any other if you disagree. A global
 "Select all" and each sub-group's own "select all" speed up working
 through a large plan; all of them just drive the same per-row
-checkboxes "Apply Tags" reads.
+checkboxes "Apply" reads.
 
 A plan spanning thousands of tracks is paginated - 50 tracks per page
 by default, configurable to 25/100/200 in the UI - with each track's
@@ -467,7 +508,7 @@ took the initial page from ~521,000 DOM nodes / 20.6s to build down to
 937 nodes / 0.73s. Checked/category state lives in memory keyed by
 track rather than in the on-page checkbox widgets themselves, so it
 survives turning the page - checking a tag on page 1 and a different
-one on page 3 both land in the same "Apply Tags" click, and both
+one on page 3 both land in the same "Apply" click, and both
 "select all" controls act on the whole plan, not just the visible
 page.
 
@@ -491,7 +532,7 @@ shipped and removed: no renaming, no moving existing tags, no picker
 of its own - just a smarter default for a dropdown that already
 existed. Mood/Theme and Charts have no such taxonomy to draw on, so
 their create rows only ever use each one's own flat `new_tag_category`
-default. Clicking "Apply Tags" splits whatever's checked by kind under
+default. Clicking "Apply" splits whatever's checked by kind under
 the hood and calls each action's own `apply_decisions()` - any
 combination in one click - then reports one combined result.
 
@@ -551,14 +592,14 @@ duplicated in Lexicon's tag list.
 A checked row only ever clears from the review screen once it's
 genuinely resolved - either just written, or found to already be on
 the track (a previous partial save, or added by hand in Lexicon in
-between) - never just because Apply Tags was clicked. A track Lexicon
+between) - never just because Apply was clicked. A track Lexicon
 actually refused to write to (every PATCH shape rejected, or the track
 no longer exists) stays checked and is named in the result message,
 rather than silently vanishing into a bare server-side log line with
 no way to tell it apart from "nothing needed doing."
 
 That resolution is written straight back to the plan's own JSON file
-the moment Apply Tags finishes, not just held in memory for the rest
+the moment Apply finishes, not just held in memory for the rest
 of the window's session. Real DJ use surfaced why that matters: a
 native window that's stepped away from for a while can lose its
 connection to the background process entirely, and reconnecting past
@@ -595,7 +636,7 @@ except to launch one. Genre/Subgenre has been exercised against a real
 been exercised the same way at smaller scale so far; Charts has been
 verified against the same real library (a real `billboard_cache.json`
 built from public Billboard chart datasets, confirmed correct matches
-and auto-include behavior) but not yet used for a real Apply Tags run.
+and auto-include behavior) but not yet used for a real Apply run.
 
 - **Genre/Subgenre fetch sources**: Discogs and two independent local
   audio models (`discogs-maest` and `genre_discogs400`) are

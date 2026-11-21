@@ -43,7 +43,7 @@ never gets committed:
 | `DISCOGS_TOKEN`   | `fetch/discogs.py`      | https://www.discogs.com/settings/developers (personal access token) |
 | `ANTHROPIC_API_KEY` | `fetch/llm_web_search.py` (not yet built) | https://console.anthropic.com/ |
 
-## Review UI (Genre/Subgenre, Mood/Theme, and Charts)
+## Review UI (Genre/Subgenre, Mood/Theme, Charts, and Album/Year/Genre fixes)
 
 ```
 source ../.venv/bin/activate   # skip if the prompt already shows (.venv)
@@ -55,18 +55,19 @@ python track_record.py
 it does like every other module here, since a DJ only ever sees the
 command and the window title, never the filename)
 
-One native window, one command, one "Generate Plan" for all three
+One native window, one command, one "Generate Plan" for all four
 actions. Nothing else needs the terminal, and generating a plan never
-writes anything - "Apply Tags" is the only action that does:
+writes anything - "Apply" is the only action that does:
 
 1. Pick what to scan - whole library (optionally capped to the first
    N tracks), the N most recently added, everything in Incoming, or a
    single track (search by artist/title - each DJ edit of a song is
    its own separate entry, since edit info already lives in the title
    itself) for spot-checking one song without waiting on a real scan -
-   and which action(s) to include via the "Tag with:" checkboxes
-   (Genre/Subgenre, Mood/Theme, Charts, any combination; all three on
-   by default). With Genre/Subgenre checked, a checkbox per fetch
+   and which action(s) to include via the "Include:" checkboxes
+   (Genre/Subgenre, Mood/Theme, Charts, Album / Year / Genre fixes, any
+   combination; the first three on by default, the fourth off - see
+   "Album / Year / Genre fixes" below). With Genre/Subgenre checked, a checkbox per fetch
    source (Discogs, and two independent audio models - discogs-maest
    and genre_discogs400) also appears, letting you turn any off for
    this run entirely - e.g. skip both audio models, by far the slowest
@@ -126,10 +127,10 @@ writes anything - "Apply Tags" is the only action that does:
    page by default, configurable to 25/100/200 via the "tracks per
    page" picker above the list - and each track's rows aren't built
    until you actually expand it, so the screen stays responsive
-   regardless of plan size. "Select all" and Apply Tags both act
+   regardless of plan size. "Select all" and Apply both act
    across the *whole* plan, not just the visible page, so checking a
    tag on page 1 and a different one on page 3 both make it into the
-   same Apply Tags click. Different DJ edits of the same song (e.g.
+   same Apply click. Different DJ edits of the same song (e.g.
    "(Intro Clean)" / "(Quick Hit Clean)") are detected automatically by
    artist + title, ignoring edit/version suffixes and matching on
    primary artist so a feature credit folded into one edit's Artist
@@ -147,7 +148,7 @@ writes anything - "Apply Tags" is the only action that does:
    between edits in a way genre doesn't; see the top-level README's
    "Review" section for the full rationale.
 3. Check what you agree with (or leave the pre-checked ones as they
-   are) and hit **"Apply Tags"** - the one action that writes to
+   are) and hit **"Apply"** - the one action that writes to
    Lexicon, splitting whatever's checked by kind under the hood and
    reporting one combined result. Applying writes the updated plan back
    to its own JSON file immediately, not just to memory - a resolved row
@@ -186,6 +187,34 @@ python charts_plan.py --limit 20      # same flags again, minus --resume/--reset
 python charts_plan.py --mode recent   #   Charts has no resumable scan position (see above)
 python charts_apply.py
 ```
+
+## Album / Year / Genre fixes
+
+Tick **Album / Year / Genre fixes**, pick **Incoming** (or **Most recently
+added**), and Generate Plan. For each track it checks the Album Title,
+Year and Genre fields and proposes fixes - see the top-level README's
+"Album / Year / Genre fixes" section for the rules and how reliable the
+suggestions are. In the review list each fix is a row:
+~~old value~~ → an editable box with the suggestion. **Nothing is
+pre-checked** - these overwrite existing values - but typing into a box
+checks it, and "Select all album / year / genre fixes" checks every row
+that has a value. A row with no suggestion has an empty box; type the
+answer in or leave it unchecked.
+
+- Needs Lexicon open (as always) and an internet connection (MusicBrainz).
+  The first scan of a track takes about a second; MusicBrainz lookups are
+  cached in `metadata_cache.json`, so re-scanning is instant. If
+  MusicBrainz is busy, requests retry with backoff; tracks that still
+  couldn't be reached are counted in the "Plan ready" message and can be
+  scanned again later.
+- Command line, if you prefer: `python metadata_plan.py --mode incoming`
+  (writes `metadata_plan.json`, changes nothing in Lexicon).
+- **Undo:** every Apply logs old and new values to
+  `metadata_applied_log.json`. `python metadata_apply.py --undo` restores
+  the most recent batch (fields you've changed again since are left
+  alone).
+- A whole-library scan with no count is skipped for this action: it would
+  mean one MusicBrainz lookup per track.
 
 ## A double-clickable app (macOS)
 

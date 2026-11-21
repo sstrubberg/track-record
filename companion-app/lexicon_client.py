@@ -155,3 +155,13 @@ def write_track_tags(track_id, tags: list, shape: str | None = None):
             return True, name, None
         errors.append(f"{name}: HTTP {r.status_code} {r.text[:160]}")
     return False, None, " | ".join(errors)
+
+
+def write_track_fields(track_id, edits: dict) -> tuple[bool, str | None]:
+    """PATCH plain track fields (albumTitle, year, genre, ...) in one
+    request. Same {"id", "edits"} body shape write_track_tags() settled
+    on. Returns (ok, error detail)."""
+    r = requests.patch(f"{LEXICON}/track", json={"id": track_id, "edits": edits}, timeout=30)
+    if r.ok:
+        return True, None
+    return False, f"HTTP {r.status_code} {r.text[:160]}"
