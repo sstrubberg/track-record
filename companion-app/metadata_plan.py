@@ -19,7 +19,10 @@ What it looks for, per track:
   made when:
     * the current album reads like junk (JUNK_ALBUM_RE) or is empty, or
     * the current year is implausible (before 1900 or in the future), or
-    * MusicBrainz's year differs from the current year by 2+ years.
+    * MusicBrainz's year is 2+ years EARLIER than the current year. A
+      later MusicBrainz year is never raised: MusicBrainz gives the
+      earliest release it knows of, so a later one just means it lacks
+      the original (it's a gap in MusicBrainz, not an error in the year).
   An album that merely differs in name from MusicBrainz's (a single's own
   title vs. its parent album, say) is left alone when the year agrees -
   both are defensible and this is the most common false alarm.
@@ -181,12 +184,17 @@ def _row(track: dict, field: str, old, new, confidence: float, reason: str, sour
     }
 
 
+# Years that are placeholders in this library, not real release years
+# (the "Untitled" / 1952 rips).
+PLACEHOLDER_YEARS = {1952}
+
+
 def _year_implausible(year) -> bool:
     try:
         y = int(year)
     except (TypeError, ValueError):
         return True
-    return y < 1900 or y > date.today().year + 1
+    return y < 1900 or y > date.today().year + 1 or y in PLACEHOLDER_YEARS
 
 
 def suggest_album_year(track: dict, release: dict | None) -> list[dict]:
@@ -201,7 +209,14 @@ def suggest_album_year(track: dict, release: dict | None) -> list[dict]:
     year_junk = year in (None, "", 0) or _year_implausible(year)
 
     mb_year = release["year"] if release else None
-    year_disagrees = bool(mb_year) and not year_junk and abs(int(year) - mb_year) >= YEAR_DISAGREEMENT
+    # One-directional on purpose: MusicBrainz reports the earliest release
+    # it *knows of*, so a MusicBrainz year EARLIER than the current one is
+    # evidence the current year is a reissue/compilation year - but a LATER
+    # one only means MusicBrainz is missing the original (B4-4 "Get Down":
+    # correct 2000, MusicBrainz only knew a 2004 album). Never "fix" a
+    # plausible year to a later one.
+    year_disagrees = bool(mb_year) and not year_junk and int(year) - mb_year >= YEAR_DISAGREEMENT
+    mb_year_later = bool(mb_year) and not year_junk and mb_year > int(year)
 
     url = f"https://musicbrainz.org/recording/{release['recording_id']}" if release else None
     # An album-type match is more trustworthy than falling back to a
@@ -219,11 +234,11 @@ def suggest_album_year(track: dict, release: dict | None) -> list[dict]:
     # A year row when the year itself is suspect, MusicBrainz disagrees
     # by 2+ years, or the album is being replaced and the year should
     # follow the original release it now points at.
-    if mb_year and mb_year != year and (year_junk or year_disagrees or album_junk):
+    if mb_year and mb_year != year and (year_junk or year_disagrees or (album_junk and not mb_year_later)):
         if year_junk:
             why, conf = "year looks wrong", base
         elif year_disagrees:
-            why, conf = f"year differs from MusicBrainz's by {abs(int(year) - mb_year)} years", base - 0.2
+            why, conf = f"year is {int(year) - mb_year} years later than MusicBrainz's earliest release", base - 0.2
         else:
             why, conf = "album is being replaced, so the year follows its original release", base
         rows.append(_row(track, "year", year, mb_year, conf, f"{why} - MusicBrainz: first released {mb_year}", "musicbrainz", url))

@@ -432,8 +432,9 @@ differently from the other three:
   song's own single/EP where it never had one.
 - **What's flagged.** An album that reads like junk (empty, "Untitled",
   compilation / DJ-pool / karaoke / "(Sped Up)" / reissue-edition titles),
-  an implausible year, or a year that disagrees with MusicBrainz's by two
-  or more years. An album that merely *differs in name* from
+  an implausible year, or a year that is two or more years *later* than
+  MusicBrainz's earliest release (a later MusicBrainz year is never
+  raised: it only means MusicBrainz lacks the original). An album that merely *differs in name* from
   MusicBrainz's while the year agrees (a single's title vs. its parent
   album) is left alone - both are defensible. A genre that looks like a
   pasted tag list ("2000s RnB Pop MSmid CBmid"), or is out of line with the
