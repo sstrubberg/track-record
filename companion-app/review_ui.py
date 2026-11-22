@@ -1058,6 +1058,10 @@ def build_ui() -> None:
                         ui.button(icon="open_in_new", on_click=lambda url=url: ui.navigate.to(url, new_tab=True)).props(
                             "flat round dense size=sm"
                         ).tooltip("Open the MusicBrainz recording")
+                if row["field"] in ("year", "albumTitle"):
+                    # Visible, not just in the tooltip: which source said
+                    # what is the whole basis for trusting (or not) a year.
+                    ui.label(row["reason"]).classes("text-xs text-gray-500 px-2 pb-1 -mt-1")
 
         for track_id, info in page_tracks:
             genre_rows = [r for r in info["rows"] if r["kind"] == "genre"]
@@ -1081,7 +1085,7 @@ def build_ui() -> None:
             if not charts_rows and track_id in charts_no_match:
                 no_match_bits.append(f"Charts: {charts_no_match[track_id]}")
             if not metadata_rows and track_id in metadata_failed:
-                no_match_bits.append("Album/Year: MusicBrainz was unreachable - scan again later")
+                no_match_bits.append("Album/Year: a year source was unreachable - scan again later")
             if no_match_bits:
                 # Ran (this track just wasn't sitting on the other
                 # action(s)' candidates alone) and genuinely found
@@ -1583,7 +1587,7 @@ def build_ui() -> None:
             n_unreachable = len(metadata_counts.get("lookup_failed", []))
             parts.append(
                 f"Album/Year/Genre: {n_fixes} suggestion(s) on {n_meta_tracks} track(s)"
-                + (f", {n_unreachable} couldn't be looked up (MusicBrainz busy - scan again later)" if n_unreachable else "")
+                + (f", {n_unreachable} had a year source unreachable (busy - scan again later)" if n_unreachable else "")
             )
         summary = " | ".join(parts) if parts else "no plan generated"
         notify(

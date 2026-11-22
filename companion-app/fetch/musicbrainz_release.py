@@ -170,30 +170,66 @@ def _pick(recordings: list[dict], title: str) -> dict | None:
     }
 
 
+# For "when did the song first come out" only genuinely different
+# recordings are excluded - a radio edit or single mix carries the
+# original release date, unlike a live take or a remix.
+_DIFFERENT_RECORDING = re.compile(r"\b(live|acoustic|instrumental|karaoke|remix|sped up|demo)\b", re.I)
+
+
+def _first_year(recordings: list[dict], title: str) -> int | None:
+    """The earliest `first-release-date` MusicBrainz records for the song
+    itself (any release type - this is "when did it first come out
+    anywhere", the number the Year field wants). Same title/version
+    filtering as _pick, none of its release-type filtering."""
+    wanted = _norm(mb._strip_edit_suffixes(title))
+    wants_version = bool(_DIFFERENT_RECORDING.search(title))
+    years = []
+    for rec in recordings:
+        if rec.get("score", 0) < mb.MATCH_THRESHOLD or _norm(rec.get("title")) != wanted:
+            continue
+        if _DIFFERENT_RECORDING.search(rec.get("title") or "") and not wants_version:
+            continue
+        d = rec.get("first-release-date") or ""
+        if len(d) >= 4 and d[:4].isdigit():
+            years.append(int(d[:4]))
+    return min(years) if years else None
+
+
 def find_original_release(artist: str, title: str, use_cache: bool = True) -> dict | None:
     """{"album", "year", "kind", "recording_id"} for the song's original
     release, or None if MusicBrainz has no qualifying one. Raises
     LookupUnavailable if MusicBrainz couldn't be reached."""
+    return find_release_info(artist, title, use_cache)["release"]
+
+
+def find_release_info(artist: str, title: str, use_cache: bool = True) -> dict:
+    """{"release": <find_original_release's answer or None>,
+        "first_year": MusicBrainz's earliest recorded date for the song
+                      or None}. One request gives both. Raises
+    LookupUnavailable if MusicBrainz couldn't be reached."""
     key = _cache_key(artist, title)
     cache = _load_cache() if use_cache else {}
     hit = cache.get(key)
-    if hit is not None:
+    # Entries written before first_year existed are refetched.
+    if hit is not None and "first_year" in hit:
         if hit.get("result") is not None:
-            return hit["result"]
+            return {"release": hit["result"], "first_year": hit["first_year"]}
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(hit["when"])).days
         if age < NEGATIVE_TTL_DAYS:
-            return None
+            return {"release": None, "first_year": hit["first_year"]}
 
     primary = mb._primary_artist(artist)
     stripped = mb._strip_edit_suffixes(title)
     data = _get_with_retry({
         "query": f'artist:"{mb._escape(primary)}" AND recording:"{mb._escape(stripped)}"',
         "fmt": "json",
-        "limit": 25,
+        "limit": 100,  # popular songs have dozens of recordings; a small window can miss the original
     })
-    result = _pick(data.get("recordings", []), title)
+    recordings = data.get("recordings", [])
+    result = _pick(recordings, title)
+    first_year = _first_year(recordings, title)
 
     if use_cache:
-        cache[key] = {"result": result, "when": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        cache[key] = {"result": result, "first_year": first_year, "when": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         _save_cache(cache)
-    return result
+    return {"release": result, "first_year": first_year}

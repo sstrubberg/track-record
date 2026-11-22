@@ -14,21 +14,27 @@ What it looks for, per track:
   the literal "Untitled", and of years to match (1952 is the classic
   placeholder). The convention this checks against: Year is the year the
   song *first came out*, and Album is the original studio album - or the
-  song's own single/EP where it never had one. MusicBrainz is asked for
-  that original release (fetch/musicbrainz_release.py). A suggestion is
-  made when:
-    * the current album reads like junk (JUNK_ALBUM_RE) or is empty, or
-    * the current year is implausible (before 1900 or in the future), or
-    * MusicBrainz's year is 2+ years EARLIER than the current year. A
-      later MusicBrainz year is never raised: MusicBrainz gives the
-      earliest release it knows of, so a later one just means it lacks
-      the original (it's a gap in MusicBrainz, not an error in the year).
-  An album that merely differs in name from MusicBrainz's (a single's own
-  title vs. its parent album, say) is left alone when the year agrees -
-  both are defensible and this is the most common false alarm.
-  If the current value is junk but MusicBrainz has nothing, the row is
-  still emitted with no suggestion (new = None) so the review screen can
-  flag it for a hand-typed answer instead of silently skipping it.
+  song's own single/EP where it never had one.
+
+  Year is the field that matters, and no single database reliably knows
+  it (fetch/release_years.py: iTunes, MusicBrainz and Discogs are each
+  right about 7 times in 10, and tend to be wrong in different ways). So
+  it is judged by agreement. The current year is left alone if ANY
+  source is within a year of it - one source missing the original (B4-4
+  "Get Down": filed 2000, MusicBrainz 2000, iTunes 2003) is not evidence
+  the year is wrong. A year row appears only when two or more sources
+  answered and none supports the current year, or the year is implausible
+  / a placeholder. Its suggestion is the year at least two sources agree
+  on (the row says how strongly); if they disagree with each other, or
+  the title is a remix/version (the databases describe the original
+  song), the row has no suggestion and the box is left for you.
+
+  Album is MusicBrainz's original album (fetch/musicbrainz_release.py),
+  suggested only when the current one is empty or reads like junk
+  (JUNK_ALBUM_RE). An album that merely differs in name from
+  MusicBrainz's is left alone - both are defensible, and it is the
+  commonest false alarm. A junk album with no MusicBrainz match gets a
+  row with no suggestion (new = None) so it can be typed by hand.
 
 - Genre. Purely local - no lookup. Genre is a loose field (this library
   has ~45 distinct values), so only two things are flagged: a value that
@@ -54,6 +60,7 @@ from pathlib import Path
 import lexicon_client
 from fetch import musicbrainz as mb
 from fetch import musicbrainz_release as mbr
+from fetch import release_years as ry
 
 PLAN_FILE = Path(__file__).resolve().parent / "metadata_plan.json"
 SCAN_MODES = ("all", "recent", "incoming")
@@ -61,10 +68,10 @@ DEFAULT_RECENT_COUNT = 20
 
 FIELD_LABELS = {"albumTitle": "Album", "year": "Year", "genre": "Genre"}
 
-# A Year this many or more years away from MusicBrainz's counts as a
-# disagreement worth raising. 1 is excluded on purpose: single-vs-album
-# release dates and regional releases differ by a year constantly.
-YEAR_DISAGREEMENT = 2
+# A source "supports" the current Year if it is within this many years of
+# it: single-vs-album release dates and regional releases differ by a
+# year constantly, and that is no reason to rewrite a year.
+YEAR_TOLERANCE = 1
 
 # Genre: an artist needs at least this many *filed* tracks, with at
 # least this share of them in one genre, before "out of line with their
@@ -169,7 +176,8 @@ def suggest_genre(track: dict, stats: dict) -> dict | None:
     return None
 
 
-def _row(track: dict, field: str, old, new, confidence: float, reason: str, source: str, url: str | None = None) -> dict:
+def _row(track: dict, field: str, old, new, confidence: float, reason: str, source: str, url: str | None = None,
+         sources: list[dict] | None = None) -> dict:
     return {
         "track_id": track["id"],
         "artist": track.get("artist") or "",
@@ -180,7 +188,7 @@ def _row(track: dict, field: str, old, new, confidence: float, reason: str, sour
         "new": new,
         "confidence": round(confidence, 3),
         "reason": reason,
-        "sources": [{"source": source, "note": reason, "url": url}],
+        "sources": sources if sources is not None else [{"source": source, "note": reason, "url": url}],
     }
 
 
@@ -197,73 +205,89 @@ def _year_implausible(year) -> bool:
     return y < 1900 or y > date.today().year + 1 or y in PLACEHOLDER_YEARS
 
 
-def suggest_album_year(track: dict, release: dict | None) -> list[dict]:
-    """Album/Year rows from the track's current values + MusicBrainz's
-    original release (None if it had nothing). See the module docstring
-    for the rules."""
+def suggest_album_year(track: dict, info: dict | None) -> list[dict]:
+    """Album/Year rows from the track's current values + what the year
+    sources found. `info` is fetch/release_years.lookup()'s answer
+    ({"years", "release", "recording_id", "unavailable"}) or None. See the
+    module docstring for the rules."""
     rows: list[dict] = []
+    info = info or {}
+    release = info.get("release")
+    years = info.get("years") or {}
+    cons = ry.consensus(years)
+    values = cons["values"]
     album = (track.get("albumTitle") or "").strip()
     year = track.get("year")
+    title = track.get("title") or ""
 
     album_junk = (not album) or bool(mbr.JUNK_ALBUM_RE.search(album))
     year_junk = year in (None, "", 0) or _year_implausible(year)
 
-    mb_year = release["year"] if release else None
-    # One-directional on purpose: MusicBrainz reports the earliest release
-    # it *knows of*, so a MusicBrainz year EARLIER than the current one is
-    # evidence the current year is a reissue/compilation year - but a LATER
-    # one only means MusicBrainz is missing the original (B4-4 "Get Down":
-    # correct 2000, MusicBrainz only knew a 2004 album). Never "fix" a
-    # plausible year to a later one.
-    year_disagrees = bool(mb_year) and not year_junk and int(year) - mb_year >= YEAR_DISAGREEMENT
-    mb_year_later = bool(mb_year) and not year_junk and mb_year > int(year)
+    mb_url = f"https://musicbrainz.org/recording/{info['recording_id']}" if info.get("recording_id") else None
+    sources = [
+        {"source": name, "note": f"{ry.SOURCE_LABELS[name]}: {years[name] if years[name] is not None else 'nothing'}",
+         "url": mb_url if name == "musicbrainz" else None}
+        for name in ry.SOURCES if name in years
+    ]
+    seen = ry.describe(years)
 
-    url = f"https://musicbrainz.org/recording/{release['recording_id']}" if release else None
-    # An album-type match is more trustworthy than falling back to a
-    # single/EP's title, and a bare-year-only disagreement on a
-    # non-junk album the least (it may be this track that's right).
-    base = 0.7 if release and release["kind"] == "Album" else 0.5
-
+    # ---- Album: MusicBrainz's original album, only when the current one looks wrong.
     if album_junk:
         if release:
-            note = f"MusicBrainz: original release is \"{release['album']}\" ({release['year']})"
-            rows.append(_row(track, "albumTitle", track.get("albumTitle"), release["album"], base, f"album looks wrong - {note}", "musicbrainz", url))
+            why = f"album looks wrong - MusicBrainz: original release is \"{release['album']}\" ({release['year']})"
+            # An album from well after the song's likely year is probably a
+            # later album the song was moved onto, not where it started.
+            later = cons["year"] and release["year"] - cons["year"] >= 2
+            if later:
+                why += f" - but the song dates from about {cons['year']}, so that may be a later album: check"
+            base = 0.7 if release["kind"] == "Album" else 0.5
+            rows.append(_row(track, "albumTitle", track.get("albumTitle"), release["album"], 0.35 if later else base,
+                             why, "musicbrainz", mb_url, sources))
         else:
-            rows.append(_row(track, "albumTitle", track.get("albumTitle"), None, 0.0, "album looks like a compilation/placeholder and MusicBrainz had no match - type the album", "musicbrainz"))
+            rows.append(_row(track, "albumTitle", track.get("albumTitle"), None, 0.0,
+                             "album looks like a compilation/placeholder and MusicBrainz had no match - type the album",
+                             "musicbrainz", None, sources))
 
-    # A year row when the year itself is suspect, MusicBrainz disagrees
-    # by 2+ years, or the album is being replaced and the year should
-    # follow the original release it now points at.
-    if mb_year and mb_year != year and (year_junk or year_disagrees or (album_junk and not mb_year_later)):
-        if year_junk:
-            why, conf = "year looks wrong", base
-        elif year_disagrees:
-            why, conf = f"year is {int(year) - mb_year} years later than MusicBrainz's earliest release", base - 0.2
+    # ---- Year: judged by agreement between sources, never by one of them.
+    if year_junk:
+        if cons["year"] and not ry.is_version_title(title):
+            conf = 0.85 if cons["strength"] == "strong" else 0.65
+            rows.append(_row(track, "year", year, cons["year"], conf,
+                             f"year looks wrong - {cons['strength']} agreement on {cons['year']} ({seen})", "years", None, sources))
         else:
-            why, conf = "album is being replaced, so the year follows its original release", base
-        rows.append(_row(track, "year", year, mb_year, conf, f"{why} - MusicBrainz: first released {mb_year}", "musicbrainz", url))
-    elif year_junk and not mb_year:
-        rows.append(_row(track, "year", year, None, 0.0, "year looks wrong and MusicBrainz had no match - type the year", "musicbrainz"))
+            why = f"year looks wrong; the sources don't settle it ({seen or 'no source had this song'}) - type the year"
+            rows.append(_row(track, "year", year, None, 0.0, why, "years", None, sources))
+    elif len(values) >= 2 and not any(abs(v - int(year)) <= YEAR_TOLERANCE for v in values):
+        # Two or more sources answered and not one is within a year of
+        # the current value. (If even one supports it - B4-4 "Get Down":
+        # MusicBrainz 2000, iTunes 2003, filed 2000 - the year stands:
+        # the other source may just be missing the original.)
+        version = ry.is_version_title(title)
+        if cons["year"] and not version:
+            conf = 0.85 if cons["strength"] == "strong" else 0.65
+            why = f"no source supports {year}; {cons['strength']} agreement on {cons['year']} ({seen})"
+            new = cons["year"]
+        else:
+            conf, new = 0.0, None
+            why = f"no source supports {year} ({seen})"
+            why += " - this is a remix/version, so they may be describing the original song" if version else " - they don't agree with each other, so no suggestion"
+        rows.append(_row(track, "year", year, new, conf, why, "years", None, sources))
     return rows
 
 
-def plan_track(track: dict, genre_stats: dict, lookup=mbr.find_original_release) -> dict:
+def plan_track(track: dict, genre_stats: dict, lookup=ry.lookup) -> dict:
     """One track's rows, shaped like the other actions' plan_track() so
     review_ui's progress preview can treat them alike: auto/create are
     always empty (nothing here is ever pre-approved), review holds every
-    row. `lookup_failed` is set when MusicBrainz couldn't be reached."""
+    row. `lookup_failed` is set when a year source couldn't be reached
+    (the suggestions are then based on fewer sources than usual)."""
     rows: list[dict] = []
-    failed = False
-    release = None
-    try:
-        release = lookup(track.get("artist") or "", track.get("title") or "")
-    except mbr.LookupUnavailable:
-        failed = True
-    rows.extend(suggest_album_year(track, release))
+    info = lookup(track.get("artist") or "", track.get("title") or "")
+    rows.extend(suggest_album_year(track, info))
     g = suggest_genre(track, genre_stats)
     if g:
         rows.append(g)
-    return {"auto": [], "review": rows, "create": [], "no_match": None, "lookup_failed": failed}
+    return {"auto": [], "review": rows, "create": [], "no_match": None, "lookup_failed": bool(info.get("unavailable"))}
 
 
 def generate_plan(
@@ -305,7 +329,7 @@ def generate_plan(
         tracks = [t for t in tracks if t["id"] == track_id]
     if limit and scan_mode != "recent":
         tracks = tracks[:limit]
-    status(f"planning {len(tracks)} track(s) - MusicBrainz allows ~1 lookup/second, uncached tracks take a moment each")
+    status(f"planning {len(tracks)} track(s) - three year sources, rate-limited; uncached tracks take a few seconds each")
 
     review_all: list[dict] = []
     lookup_failed: list[dict] = []
@@ -352,7 +376,7 @@ def main():
     args = p.parse_args()
 
     def on_track_planned(i, total, track, result):
-        print(f"[{i}/{total}] {track.get('artist')} - {track.get('title')}" + ("  (MusicBrainz unavailable)" if result["lookup_failed"] else ""))
+        print(f"[{i}/{total}] {track.get('artist')} - {track.get('title')}" + ("  (a year source was unavailable)" if result["lookup_failed"] else ""))
         for r in result["review"]:
             new = r["new"] if r["new"] is not None else "(type one)"
             print(f"    {FIELD_LABELS[r['field']]:5} {r['old']!s:32.32} -> {new}")

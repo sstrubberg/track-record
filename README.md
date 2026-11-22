@@ -432,26 +432,37 @@ differently from the other three:
   song's own single/EP where it never had one.
 - **What's flagged.** An album that reads like junk (empty, "Untitled",
   compilation / DJ-pool / karaoke / "(Sped Up)" / reissue-edition titles),
-  an implausible year, or a year that is two or more years *later* than
-  MusicBrainz's earliest release (a later MusicBrainz year is never
-  raised: it only means MusicBrainz lacks the original). An album that merely *differs in name* from
-  MusicBrainz's while the year agrees (a single's title vs. its parent
-  album) is left alone - both are defensible. A genre that looks like a
-  pasted tag list ("2000s RnB Pop MSmid CBmid"), or is out of line with the
-  same artist's other filed tracks (Usher: 14 R&B/Soul/Funk, this one
+  an implausible or placeholder year (1952), or a year that **no source
+  supports**. An album that merely *differs in name* from MusicBrainz's is
+  left alone - both are defensible. A genre that looks like a pasted tag
+  list ("2000s RnB Pop MSmid CBmid"), or is out of line with the same
+  artist's other filed tracks (Usher: 14 R&B/Soul/Funk, this one
   Hip-Hop/Rap). Spellings your library already mixes ("Hip-Hop" /
   "Hip-Hop/Rap", "R&B" / "R&B/Soul/Funk") aren't treated as a mismatch.
-- **Where suggestions come from.** MusicBrainz for album and year (one
-  lookup per track, ~1 per second, retried with backoff and cached on
-  disk); your own filed library for genre (no lookup). Measured against
-  68 hand-verified tracks, MusicBrainz alone gets album *and* year right
-  about half the time, is wrong or only defensible about a quarter, and
-  finds nothing for the rest - soundtrack tie-ins, remixes and obscure
-  tracks especially. So nothing is ever pre-checked: each fix is an
-  editable box (old value struck through, then the suggestion), typing in
-  one checks it, and a field with no suggestion starts empty for you to
-  fill in. A track MusicBrainz couldn't be reached for is reported as
-  such rather than silently passed.
+- **How the year is judged.** The year is the field that matters, and no
+  single database reliably knows it: iTunes, MusicBrainz and Discogs
+  (Discogs needs your `DISCOGS_TOKEN`; without it just two are used) were
+  each right about 7 times in 10 against a hand-checked set, and they err
+  in *different* ways. So the year is judged by agreement. Your year is left
+  alone if **any** source is within a year of it - one source missing the
+  original isn't evidence you're wrong (that's the B4-4 "Get Down" case:
+  filed 2000, MusicBrainz 2000, iTunes 2003). A year row appears only when
+  two or more sources answered and none supports your year. The suggestion
+  is the year at least two sources agree on, and the row shows every
+  source's answer ("iTunes 1978 · MusicBrainz 1978 · Discogs 1978") plus
+  how strongly they agree; if they disagree with each other, or the title
+  is a remix/version (the databases describe the original song), the box
+  is left empty for you. Album comes from MusicBrainz's original release.
+  On the hand-checked set this raised year rows on about 1 track in 10,
+  and most of those were years that really were wrong in Lexicon.
+- **Where else suggestions come from.** Your own filed library for genre
+  (no lookup). Lookups run about one a second per source, retry with
+  backoff, and are cached on disk. Even so, no database is complete -
+  soundtrack tie-ins, remixes, covers and obscure tracks especially - so
+  nothing is ever pre-checked: each fix is an editable box (old value
+  struck through, then the suggestion), typing in one checks it, and a
+  field with no suggestion starts empty. A track whose sources couldn't be
+  reached is reported as such rather than silently passed.
 - **Safe to apply.** Before writing, each row is checked against Lexicon
   *now* - a value you changed since the plan was generated, or a changed
   artist, is refused rather than overwritten. Every write's old and new
@@ -459,7 +470,7 @@ differently from the other three:
   --undo` puts the most recent batch back. After writing, tracks are
   re-read and compared, so a write that didn't stick is reported.
 - **Not for a whole-library scan.** With "Whole library" and no count it
-  is skipped (with a message) - that would be ~45+ minutes of lookups.
+  is skipped (with a message) - that would be an hour or more of lookups.
   Use Incoming, Most recently added, a count, or a single track.
 
 ### Review

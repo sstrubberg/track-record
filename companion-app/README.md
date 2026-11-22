@@ -201,12 +201,14 @@ checks it, and "Select all album / year / genre fixes" checks every row
 that has a value. A row with no suggestion has an empty box; type the
 answer in or leave it unchecked.
 
-- Needs Lexicon open (as always) and an internet connection (MusicBrainz).
-  The first scan of a track takes about a second; MusicBrainz lookups are
-  cached in `metadata_cache.json`, so re-scanning is instant. If
-  MusicBrainz is busy, requests retry with backoff; tracks that still
-  couldn't be reached are counted in the "Plan ready" message and can be
-  scanned again later.
+- Needs Lexicon open (as always) and an internet connection. Each track
+  is looked up in iTunes, MusicBrainz and (with `DISCOGS_TOKEN` set) Discogs
+  - a few seconds the first time. Answers are cached in `year_cache.json`
+  and `metadata_cache.json`, so re-scanning is instant. If a source is busy,
+  requests retry with backoff; tracks that still couldn't be reached are
+  counted in the "Plan ready" message and can be scanned again later.
+  To see what the year sources say about one song:
+  `python -m fetch.release_years "Artist" "Title"`.
 - Command line, if you prefer: `python metadata_plan.py --mode incoming`
   (writes `metadata_plan.json`, changes nothing in Lexicon).
 - **Undo:** every Apply logs old and new values to
