@@ -200,6 +200,10 @@ pre-checked** - these overwrite existing values - but typing into a box
 checks it, and "Select all album / year / genre fixes" checks every row
 that has a value. A row with no suggestion has an empty box; type the
 answer in or leave it unchecked.
+Every expanded track has a **Copy artist - title** button at the top: it
+puts "Artist - Title" on the clipboard (DJ-pool tags like "(CLEAN)" and
+"(MM Edit)" removed, real mix names and featured artists kept) so you can
+paste it into a search to check a suggestion yourself.
 
 - Needs Lexicon open (as always) and an internet connection. Each track
   is looked up in iTunes, MusicBrainz and (with `DISCOGS_TOKEN` set) Discogs

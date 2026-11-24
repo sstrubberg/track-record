@@ -148,6 +148,24 @@ MOOD_PLAN_FILE = Path(__file__).resolve().parent / "mood_plan.json"
 CHARTS_PLAN_FILE = Path(__file__).resolve().parent / "charts_plan.json"
 METADATA_PLAN_FILE = Path(__file__).resolve().parent / "metadata_plan.json"
 
+
+# DJ-pool tags that say nothing about the song and only get in the way of a
+# web search: "(CLEAN)", "(DIRTY)", "(MM Edit)", "(MM Redrum Edit)", "(SE)",
+# "(Hook First)", "(Intro Clean)", "(Acapella)", "(Quick Hit)". A bracket
+# naming a real mix or a featured artist - "(Metamorphosis Mix)",
+# "(ft Rationale)" - is kept, since it is part of what you're looking for.
+_POOL_TAG = re.compile(
+    r"\s*[\(\[]\s*(?:clean|dirty|se|hook first|quick hit|acap\w*|(?:intro|outro)\b[^)\]]*|mm\b[^)\]]*|redrum\b[^)\]]*)\s*[\)\]]",
+    re.I,
+)
+
+
+def search_text(artist: str | None, title: str | None) -> str:
+    """"Artist - Title" for pasting into a search box, DJ-pool tags removed."""
+    clean = _POOL_TAG.sub("", title or "").strip() or (title or "")
+    return f"{(artist or '').strip()} - {clean}".strip(" -")
+
+
 KIND_LABELS = {"genre": "Genre / Subgenre", "mood": "Mood / Theme", "charts": "Charts", "metadata": "Album / Year / Genre fixes"}
 
 
@@ -1119,11 +1137,37 @@ def build_ui() -> None:
             def populate(
                 container, genre_rows=genre_rows, mood_rows=mood_rows, charts_rows=charts_rows,
                 metadata_rows=metadata_rows, built=built,
+                text=search_text(info["artist"], info["title"]),
             ) -> None:
                 if built["done"]:
                     return
                 built["done"] = True
                 with container:
+                    # For checking a suggestion yourself: paste into a
+                    # search engine, Wikipedia, Discogs...
+                    # Copied by JS inside the click itself, not by a
+                    # server round trip: a desktop webview only lets a page
+                    # write the clipboard while the user's click is still
+                    # "current", and ui.clipboard.write() (server -> browser)
+                    # can arrive too late and fail without any error. The
+                    # textarea + execCommand path is the fallback for a
+                    # webview that doesn't offer navigator.clipboard.
+                    copy_js = (
+                        "() => {"
+                        f"const t = {json.dumps(text)};"
+                        "const fallback = () => {"
+                        "const a = document.createElement('textarea'); a.value = t;"
+                        "a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a);"
+                        "a.select(); try { document.execCommand('copy'); } catch (e) {} a.remove(); };"
+                        "if (navigator.clipboard && navigator.clipboard.writeText) {"
+                        "navigator.clipboard.writeText(t).catch(fallback); } else { fallback(); }"
+                        "emit(); }"
+                    )
+                    ui.button("Copy artist - title", icon="content_copy").props(
+                        "flat dense no-caps size=sm"
+                    ).classes("self-start mt-1").tooltip(text).on(
+                        "click", lambda text=text: notify(f"Copied: {text}"), js_handler=copy_js,
+                    )
                     if genre_rows:
                         render_rows(genre_rows, "Select all genre tags for this track")
                     if mood_rows:
