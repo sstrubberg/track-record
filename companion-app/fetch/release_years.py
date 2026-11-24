@@ -28,6 +28,11 @@ Wikipedia was measured too and left out: its infobox dates describe
 whichever release the article is about, and it added wrong "support" for
 wrong years without catching extra errors.
 
+Each source also reports the album names it lists the song on (kept in the
+same cache; entries saved before that are refetched only when an album is
+being proposed), so metadata_plan.py can have the sources vote on the
+album the same way they vote on the year.
+
 Results are cached on disk (year_cache.json): a year found is kept
 forever, "found nothing" for 30 days. A source that couldn't be reached
 after retries is listed in `unavailable` and NOT cached.
@@ -112,12 +117,14 @@ def _get(name: str, gap: float, url: str, **kwargs) -> requests.Response:
     raise SourceUnavailable(f"{name}: {last}")
 
 
-def itunes_year(artist: str, title: str) -> int | None:
+def itunes_info(artist: str, title: str) -> dict:
+    """{"year": earliest release year or None, "albums": [{"name","year"}...]
+    oldest first} for the song as iTunes sells it."""
     a = mb._primary_artist(artist)
     t = mb._strip_edit_suffixes(title)
     r = _get("itunes", _ITUNES_GAP, "https://itunes.apple.com/search",
              params={"term": f"{a} {t}", "entity": "song", "limit": 50})
-    years = []
+    years, albums = [], []
     for x in r.json().get("results", []):
         if _norm(x.get("trackName")) != _norm(t):
             continue
@@ -130,10 +137,12 @@ def itunes_year(artist: str, title: str) -> int | None:
         d = x.get("releaseDate") or ""
         if d[:4].isdigit():
             years.append(int(d[:4]))
-    return min(years) if years else None
+            if x.get("collectionName"):
+                albums.append({"name": x["collectionName"], "year": int(d[:4])})
+    return {"year": min(years) if years else None, "albums": _oldest_first(albums)}
 
 
-def discogs_year(artist: str, title: str) -> int | None:
+def discogs_info(artist: str, title: str) -> dict:
     token = os.environ.get("DISCOGS_TOKEN")
     if not token:
         raise KeyError("no DISCOGS_TOKEN")
@@ -142,7 +151,7 @@ def discogs_year(artist: str, title: str) -> int | None:
     r = _get("discogs", _DISCOGS_GAP, "https://api.discogs.com/database/search",
              headers={"User-Agent": USER_AGENT, "Authorization": f"Discogs token={token}"},
              params={"artist": a, "track": t, "type": "master", "per_page": 50})
-    years = []
+    years, albums = [], []
     for x in r.json().get("results", []):
         ttl = x.get("title") or ""
         if _norm(mb._primary_artist(ttl.split(" - ")[0])) != _norm(a):
@@ -150,13 +159,17 @@ def discogs_year(artist: str, title: str) -> int | None:
         if re.search(r"live|karaoke|remix|compilation|greatest|best of|hits|collection", ttl, re.I):
             continue
         try:
-            years.append(int(x.get("year")))
+            y = int(x.get("year"))
         except (TypeError, ValueError):
-            pass
-    return min(years) if years else None
+            continue
+        years.append(y)
+        name = ttl.split(" - ", 1)[-1].strip()
+        if name:
+            albums.append({"name": name, "year": y})
+    return {"year": min(years) if years else None, "albums": _oldest_first(albums)}
 
 
-def audiodb_year(artist: str, title: str) -> int | None:
+def audiodb_info(artist: str, title: str) -> dict:
     """TheAudioDB: find the track, then read its album's release year (the
     track record itself carries none). Looks at up to 3 matching tracks and
     returns the earliest studio-album year; live albums are skipped."""
@@ -172,7 +185,7 @@ def audiodb_year(artist: str, title: str) -> int | None:
         # A key the service doesn't recognise answers 404 {"Message":"Not found"}.
         raise KeyError(f"TheAudioDB rejected the key: {e}")
     tracks = (r.json() or {}).get("track") or []
-    years = []
+    years, albums = [], []
     seen_albums = set()
     for x in tracks:
         if _norm(x.get("strTrack")) != _norm(t):
@@ -195,10 +208,104 @@ def audiodb_year(artist: str, title: str) -> int | None:
             if re.search(r"\b(live|karaoke)\b|\d{4}-\d\d-\d\d", alb.get("strAlbum") or "", re.I):
                 continue
             try:
-                years.append(int(alb.get("intYearReleased")))
+                y = int(alb.get("intYearReleased"))
             except (TypeError, ValueError):
-                pass
-    return min(years) if years else None
+                continue
+            years.append(y)
+            albums.append({"name": alb.get("strAlbum") or x.get("strAlbum") or "", "year": y})
+    return {"year": min(years) if years else None, "albums": _oldest_first([a_ for a_ in albums if a_["name"]])}
+
+
+def _oldest_first(albums: list[dict]) -> list[dict]:
+    seen, out = set(), []
+    for a in sorted(albums, key=lambda x: x["year"]):
+        k = (canon_album(a["name"]), a["year"])
+        if k not in seen:
+            seen.add(k)
+            out.append(a)
+    return out
+
+
+def canon_album(name: str | None) -> str:
+    """An album name boiled down for comparing across sources: no
+    bracketed bits, no "- Single" / "- EP" / "(Deluxe Edition)" suffixes
+    or punctuation. An album called just "Version" keeps its name."""
+    s = (name or "").lower()
+    plain = re.sub(r"[^a-z0-9]+", "", s)
+    s = re.sub(r"[\(\[].*?[\)\]]", "", s)
+    s = re.sub(r"\s+-\s+(single|ep|e\.p\.)\s*$", "", s)
+    s = re.sub(r"\b(deluxe|edition|expanded|remastered|remaster|anniversary|explicit|bonus|special)\b", "", s)
+    s = re.sub(r"\b(ep|single)\b\s*$", "", s)
+    s = re.sub(r"[^a-z0-9]+", "", s)
+    return s or plain
+
+
+def same_album(a: str | None, b: str | None) -> bool:
+    ca, cb = canon_album(a), canon_album(b)
+    return bool(ca and cb and (ca == cb or (min(len(ca), len(cb)) >= 4 and (ca in cb or cb in ca))))
+
+
+def album_support(albums: dict, name: str) -> list[str]:
+    """Sources (in SOURCES order) with an album matching `name`."""
+    return [n for n in SOURCES if any(same_album(name, c["name"]) for c in albums.get(n) or [])]
+
+
+def describe_albums(albums: dict, name: str, title: str = "") -> str:
+    """'MusicBrainz ✓ · iTunes ✓ · TheAudioDB none · Discogs "Collage"'."""
+    parts = []
+    for n in SOURCES:
+        if n not in albums:
+            continue
+        cands = albums[n]
+        if not cands:
+            parts.append(f"{SOURCE_LABELS[n]} none")
+        elif any(same_album(name, c["name"]) for c in cands):
+            parts.append(f"{SOURCE_LABELS[n]} ✓")
+        else:
+            parts.append(f'{SOURCE_LABELS[n]} "{cands[0]["name"]}"')
+    return " · ".join(parts)
+
+
+def is_single_named(album: str | None, title: str | None) -> bool:
+    """True if the 'album' is just the song's own title - a single, not
+    the album the song came from."""
+    return bool(canon_album(album)) and canon_album(album) == canon_album(mb._strip_edit_suffixes(title or ""))
+
+
+def _first_picks(albums: dict, title: str) -> dict:
+    """Each source's earliest album that isn't just the song's own title
+    (a single named after the song says nothing about the album)."""
+    picks = {}
+    for n in SOURCES:
+        for c in albums.get(n) or []:
+            if canon_album(c["name"]) and canon_album(c["name"]) != canon_album(title):
+                picks[n] = c["name"]
+                break
+    return picks
+
+
+def _agreeing(picks: dict, skip: str | None = None) -> tuple[str, list[str]] | None:
+    groups: dict[str, list] = {}
+    for n, name in picks.items():
+        if skip and same_album(skip, name):
+            continue
+        groups.setdefault(canon_album(name), [name, set()])[1].add(n)
+    best = max(groups.values(), key=lambda g: len(g[1]), default=None)
+    if best and len(best[1]) >= 2:
+        return best[0], [n for n in SOURCES if n in best[1]]
+    return None
+
+
+def rival_album(albums: dict, name: str, title: str) -> tuple[str, list[str]] | None:
+    """An album two or more sources each list FIRST that is not `name`:
+    (that album, sources)."""
+    return _agreeing(_first_picks(albums, title), skip=name)
+
+
+def agreed_album(albums: dict, title: str) -> tuple[str, list[str]] | None:
+    """When MusicBrainz has no album: one that two or more other sources
+    list first: (album, sources)."""
+    return _agreeing(_first_picks(albums, title))
 
 
 def _load_cache() -> dict:
@@ -215,32 +322,37 @@ def _save_cache(cache: dict) -> None:
         pass
 
 
-def _cached(cache: dict, name: str, artist: str, title: str, fetch):
-    """A source's year (or None), from the cache when fresh. Raises
-    SourceUnavailable without caching anything."""
+def _cached(cache: dict, name: str, artist: str, title: str, fetch, need_albums: bool = False) -> dict:
+    """A source's {"year", "albums"} from the cache when fresh ("albums" is
+    None for an entry saved before album names were kept; it is refetched
+    only when `need_albums`). Raises SourceUnavailable without caching."""
     key = f"{name}|{_norm(mb._primary_artist(artist))}|{_norm(mb._strip_edit_suffixes(title))}"
     hit = cache.get(key)
     if hit is not None:
-        if hit.get("year") is not None:
-            return hit["year"]
-        if (datetime.now(timezone.utc) - datetime.fromisoformat(hit["when"])).days < NEGATIVE_TTL_DAYS:
-            return None
-    year = fetch(artist, title)
-    cache[key] = {"year": year, "when": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    return year
+        fresh = hit.get("year") is not None or (
+            datetime.now(timezone.utc) - datetime.fromisoformat(hit["when"])
+        ).days < NEGATIVE_TTL_DAYS
+        if fresh and ("albums" in hit or not need_albums):
+            return {"year": hit.get("year"), "albums": hit.get("albums")}
+    info = fetch(artist, title)
+    cache[key] = {**info, "when": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    return info
 
 
-def lookup(artist: str, title: str) -> dict:
+def lookup(artist: str, title: str, need_albums: bool = False) -> dict:
     """Ask every source.
 
     {"years": {"itunes": int|None, "musicbrainz": int|None, "discogs": int|None, "audiodb": int|None},
      "release": MusicBrainz's original-album answer or None (for the Album field),
+     "albums": {source: [{"name","year"}, ...]} - every source's album names, only
+               when `need_albums` (older cache entries lack them and cost a refetch),
      "recording_id": MusicBrainz recording id or None,
      "unavailable": [source names that couldn't be reached]}
 
     A source skipped because it isn't configured (no Discogs token) is
     simply absent from "years"."""
     years: dict[str, int | None] = {}
+    albums: dict[str, list] = {}
     unavailable: list[str] = []
     release = None
 
@@ -248,14 +360,18 @@ def lookup(artist: str, title: str) -> dict:
         info = mbr.find_release_info(artist, title)
         release = info["release"]
         years["musicbrainz"] = info["first_year"]
+        albums["musicbrainz"] = [{"name": release["album"], "year": release["year"]}] if release else []
     except mbr.LookupUnavailable:
         unavailable.append("musicbrainz")
 
     cache = _load_cache()
     before = json.dumps(cache, sort_keys=True)
-    for name, fetch in (("itunes", itunes_year), ("discogs", discogs_year), ("audiodb", audiodb_year)):
+    for name, fetch in (("itunes", itunes_info), ("discogs", discogs_info), ("audiodb", audiodb_info)):
         try:
-            years[name] = _cached(cache, name, artist, title, fetch)
+            got = _cached(cache, name, artist, title, fetch, need_albums)
+            years[name] = got["year"]
+            if got.get("albums") is not None:
+                albums[name] = got["albums"]
         except SourceUnavailable:
             unavailable.append(name)
         except KeyError:
@@ -266,6 +382,7 @@ def lookup(artist: str, title: str) -> dict:
     return {
         "years": years,
         "release": release,
+        "albums": albums,
         "recording_id": (release or {}).get("recording_id"),
         "unavailable": unavailable,
     }

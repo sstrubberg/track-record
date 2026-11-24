@@ -231,22 +231,60 @@ def suggest_album_year(track: dict, info: dict | None) -> list[dict]:
     ]
     seen = ry.describe(years)
 
-    # ---- Album: MusicBrainz's original album, only when the current one looks wrong.
+    # ---- Album: MusicBrainz proposes its original album, only when the
+    # current one looks wrong; the other sources then vote on it, and the
+    # album's own year is held up against the song's year.
     if album_junk:
         if release:
+            all_albums = info.get("albums") or {}
+            support = ry.album_support(all_albums, release["album"])
+            agreed = ry.describe_albums(all_albums, release["album"], title)
             why = f"album looks wrong - MusicBrainz: original release is \"{release['album']}\" ({release['year']})"
+            if agreed:
+                why += f" [{agreed}]"
             # An album from well after the song's likely year is probably a
             # later album the song was moved onto, not where it started.
-            later = cons["year"] and release["year"] - cons["year"] >= 2
+            # Any supporting source's year counts, so one that dates the
+            # album earlier clears it.
+            album_years = [c["year"] for n in support for c in all_albums.get(n, [])
+                           if ry.same_album(release["album"], c["name"]) and c.get("year")] or [release["year"]]
+            later = cons["year"] and min(album_years) - cons["year"] >= 2
+            rival = ry.rival_album(all_albums, release["album"], title)
+            base = 0.7 if release["kind"] == "Album" else 0.5
             if later:
                 why += f" - but the song dates from about {cons['year']}, so that may be a later album: check"
-            base = 0.7 if release["kind"] == "Album" else 0.5
-            rows.append(_row(track, "albumTitle", track.get("albumTitle"), release["album"], 0.35 if later else base,
+                conf = 0.35
+            elif rival:
+                names = ", ".join(ry.SOURCE_LABELS[n] for n in rival[1])
+                why += f" - but {names} say \"{rival[0]}\": check"
+                conf = 0.4
+            elif ry.is_single_named(release["album"], title):
+                why += " - that is a single named after the song, so check the album it came from"
+                conf = 0.5
+            elif len(support) >= 3:
+                conf = 0.85
+            elif len(support) == 2:
+                conf = max(base, 0.75)
+            else:
+                conf = base
+            rows.append(_row(track, "albumTitle", track.get("albumTitle"), release["album"], conf,
                              why, "musicbrainz", mb_url, sources))
         else:
-            rows.append(_row(track, "albumTitle", track.get("albumTitle"), None, 0.0,
-                             "album looks like a compilation/placeholder and MusicBrainz had no match - type the album",
-                             "musicbrainz", None, sources))
+            all_albums = info.get("albums") or {}
+            picks = ry._first_picks(all_albums, title)
+            found = ry.agreed_album(all_albums, title)
+            if found:
+                names = ", ".join(ry.SOURCE_LABELS[n] for n in found[1])
+                conf = 0.85 if len(found[1]) >= 3 else 0.65
+                rows.append(_row(track, "albumTitle", track.get("albumTitle"), found[0], conf,
+                                 f"album looks wrong - MusicBrainz had no match, but {names} agree: \"{found[0]}\"",
+                                 "albums", None, sources))
+            else:
+                why = "album looks like a compilation/placeholder and MusicBrainz had no match"
+                if picks:
+                    why += " (" + " · ".join(f'{ry.SOURCE_LABELS[n]} "{v}"' for n, v in picks.items()) + ")"
+                rows.append(_row(track, "albumTitle", track.get("albumTitle"), None, 0.0,
+                                 why + " - type the album", "musicbrainz", None, sources))
 
     # ---- Year: judged by agreement between sources, never by one of them.
     if year_junk:
@@ -282,7 +320,9 @@ def plan_track(track: dict, genre_stats: dict, lookup=ry.lookup) -> dict:
     row. `lookup_failed` is set when a year source couldn't be reached
     (the suggestions are then based on fewer sources than usual)."""
     rows: list[dict] = []
-    info = lookup(track.get("artist") or "", track.get("title") or "")
+    album = (track.get("albumTitle") or "").strip()
+    info = lookup(track.get("artist") or "", track.get("title") or "",
+                  need_albums=(not album) or bool(mbr.JUNK_ALBUM_RE.search(album)))
     rows.extend(suggest_album_year(track, info))
     g = suggest_genre(track, genre_stats)
     if g:

@@ -454,7 +454,17 @@ differently from the other three:
   how strongly they agree (when three or more give the same year the row gets a
   quiet green check and green text); if they disagree with each other, or the title
   is a remix/version (the databases describe the original song), the box
-  is left empty for you. Album comes from MusicBrainz's original release.
+  is left empty for you. The album is only proposed when the current one
+  looks like a compilation or placeholder. MusicBrainz proposes its
+  original release, then iTunes, TheAudioDB and Discogs vote on it: the
+  row lists each source ("MusicBrainz ✓ · iTunes ✓ · Discogs "Collage"")
+  and gets the green check when three or more agree. It is marked "check"
+  instead when two sources each put the song first on a different album
+  (the usual single / EP / album split), when the album is more than a year
+  or so later than the song, or when it is just a single named after the
+  song. If MusicBrainz has nothing but two other sources agree, that
+  album is proposed; otherwise the box is left empty with what each source
+  said.
   On the hand-checked set this raised year rows on about 1 track in 10,
   and most of those were years that really were wrong in Lexicon.
 - **Where else suggestions come from.** Your own filed library for genre
