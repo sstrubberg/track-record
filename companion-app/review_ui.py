@@ -1013,7 +1013,12 @@ def build_ui() -> None:
                     cb = ui.checkbox(value=state["checked"][key]).props("dense")
                     cb.on_value_change(lambda e, key=key: state["checked"].__setitem__(key, e.value))
                     ui.label(metadata_plan_module.FIELD_LABELS[row["field"]]).classes("w-12 text-sm font-medium")
-                    ui.label(old_text).classes("text-sm text-gray-400 line-through truncate w-56 shrink-0").tooltip(old_text)
+                    old_label = ui.label(old_text).classes("text-sm text-gray-400 line-through truncate w-56 shrink-0")
+                    # Full-text popover only where the text is actually cut
+                    # off; the label is a fixed 14rem box, so on a short
+                    # value a tooltip pops up over the empty space beside it.
+                    if len(old_text) > 28:
+                        old_label.tooltip(old_text)
                     ui.icon("arrow_forward").props("size=xs").classes("text-gray-400 shrink-0")
                     box = ui.input(
                         value="" if metadata_final_value(row) is None else str(metadata_final_value(row)),
