@@ -108,8 +108,8 @@ field's value instead of adding tags, so nothing is ever pre-checked and
 each suggestion is an editable box (old value struck through -> proposed
 value). Its rows are rendered by render_metadata_rows(), applied through
 metadata_apply.py (which re-checks Lexicon first, logs old values for
-undo, and verifies afterward), and kept out of "Select all tags" - it
-has its own select-all. See metadata_plan.py.
+undo, and verifies afterward). Each expanded track has its own "Apply this
+track" button; the one at the bottom is "Apply all". See metadata_plan.py.
 
 Each action's own apply_auto() / `python plan.py` (or `mood_plan.py`)
 + `python apply.py` (or `mood_apply.py`) CLI path still applies a
@@ -811,60 +811,16 @@ def build_ui() -> None:
         # back up to the edit worked a minute ago.
         siblings_by_track = find_sibling_edits(tracks)
 
-        def toggle_all(e) -> None:
-            for track_id, info in tracks.items():
-                for row in info["rows"]:
-                    if row["kind"] == "metadata":
-                        continue  # has its own select-all below - these overwrite values, tags only add
-                    state["checked"][(track_id, row["kind"], row["tag"])] = e.value
-            review_section.refresh()
-
         def metadata_final_value(row: dict):
             """What would be written for this Metadata row: the typed/
             edited value if there is one, else the suggestion."""
             return state["metadata_values"].get((row["track_id"], row["field"]), row["new"])
 
-        metadata_keys = {k for k in valid_keys if k[1] == "metadata"}
-        # Rows with no suggestion AND nothing typed have no value to write -
-        # select-all skips those rather than checking something un-appliable.
-        metadata_selectable = [
-            (tid, row) for tid, info in tracks.items() for row in info["rows"]
-            if row["kind"] == "metadata" and metadata_final_value(row) not in (None, "")
-        ]
-
-        def toggle_all_metadata(e) -> None:
-            for tid, row in metadata_selectable:
-                state["checked"][(tid, "metadata", row["tag"])] = e.value
-            review_section.refresh()
-
-        # value=False used to be a hard-coded literal here, not derived
-        # from state - harmless before toggle_all() called refresh()
-        # unconditionally (nothing ever rebuilt this checkbox out from
-        # under itself), but once it did, every click rebuilt this exact
-        # checkbox back to its literal False, snapping it right back to
-        # unchecked even though the click had, in fact, just checked
-        # every row (confirmed directly: the underlying state["checked"]
-        # writes always worked correctly - only this checkbox's own
-        # displayed value was wrong). Computed fresh each render instead.
-        tag_keys = valid_keys - metadata_keys
-        all_checked = bool(tag_keys) and all(state["checked"].get(key) for key in tag_keys)
         with ui.row().classes("items-center gap-2"):
-            # Bare "Select all" didn't say what it was all of - genre,
-            # mood, one track, every track, the visible page? It's
-            # actually every genre and mood candidate row across the
-            # whole plan (see toggle_all() above), independent of
-            # pagination - matching that in the label instead of
-            # leaving it to be inferred.
-            if tag_keys:
-                ui.checkbox("Select all tags (every track)", value=all_checked, on_change=toggle_all)
-            if metadata_selectable:
-                all_meta_checked = all(state["checked"].get((tid, "metadata", row["tag"])) for tid, row in metadata_selectable)
-                ui.checkbox(
-                    "Select all album / year / genre fixes", value=all_meta_checked, on_change=toggle_all_metadata
-                ).tooltip("Nothing here is pre-checked - these overwrite existing values, so check what you've verified")
-            ui.label(f"{len(tracks)} track(s) with proposals - high-confidence tags are pre-checked, review the rest").classes(
-                "text-gray-500"
-            )
+            ui.label(
+                f"{len(tracks)} track(s) with proposals - high-confidence tags are pre-checked, review the rest. "
+                "Apply one track from its own panel, or Apply all at the bottom."
+            ).classes("text-gray-500")
 
         # Pagination - at real-library scale (thousands of tracks) every
         # track's expansion showing up at once, even collapsed, was
@@ -1071,11 +1027,6 @@ def build_ui() -> None:
 
                     box.on_value_change(on_edit)
                     ui.icon("info", color="grey").props("size=xs").classes("shrink-0").tooltip(row["reason"])
-                    url = next((src.get("url") for src in row["sources"] if src.get("url")), None)
-                    if url:
-                        ui.button(icon="open_in_new", on_click=lambda url=url: ui.navigate.to(url, new_tab=True)).props(
-                            "flat round dense size=sm"
-                        ).tooltip("Open the MusicBrainz recording")
                 if row["field"] in ("year", "albumTitle"):
                     # Visible, not just in the tooltip: which source said
                     # what is the whole basis for trusting (or not) a year.
@@ -1137,7 +1088,7 @@ def build_ui() -> None:
             def populate(
                 container, genre_rows=genre_rows, mood_rows=mood_rows, charts_rows=charts_rows,
                 metadata_rows=metadata_rows, built=built,
-                text=search_text(info["artist"], info["title"]),
+                text=search_text(info["artist"], info["title"]), track_id=track_id,
             ) -> None:
                 if built["done"]:
                     return
@@ -1163,11 +1114,18 @@ def build_ui() -> None:
                         "navigator.clipboard.writeText(t).catch(fallback); } else { fallback(); }"
                         "emit(); }"
                     )
-                    ui.button("Copy artist - title", icon="content_copy").props(
-                        "flat dense no-caps size=sm"
-                    ).classes("self-start mt-1").tooltip(text).on(
-                        "click", lambda text=text: notify(f"Copied: {text}"), js_handler=copy_js,
-                    )
+                    with ui.row().classes("items-center gap-2 mt-1"):
+                        ui.button("Copy artist - title", icon="content_copy").props(
+                            "flat dense no-caps size=sm"
+                        ).tooltip(text).on(
+                            "click", lambda text=text: notify(f"Copied: {text}"), js_handler=copy_js,
+                        )
+                        # Applies only what's checked on THIS track (all
+                        # four kinds); "Apply all" at the bottom of the
+                        # page does every track.
+                        ui.button("Apply this track", icon="check", on_click=lambda tid=track_id: save(tid)).props(
+                            "color=primary dense no-caps size=sm"
+                        )
                     if genre_rows:
                         render_rows(genre_rows, "Select all genre tags for this track")
                     if mood_rows:
@@ -1200,7 +1158,9 @@ def build_ui() -> None:
 
             expansion.on_value_change(on_expansion_toggle)
 
-        async def save():
+        async def save(only_track_id=None):
+            """Apply what's checked - for one track if only_track_id is given
+            (its own Apply button), else for every track (Apply all)."""
             approved = {
                 "genre": {"review": [], "create": []},
                 "mood": {"review": [], "create": []},
@@ -1210,6 +1170,8 @@ def build_ui() -> None:
             approved_metadata: list[dict] = []
             skipped_empty_metadata = 0
             for track_id, info in tracks.items():
+                if only_track_id is not None and track_id != only_track_id:
+                    continue
                 for row in info["rows"]:
                     key = (track_id, row["kind"], row["tag"])
                     if not state["checked"].get(key):
@@ -1233,7 +1195,7 @@ def build_ui() -> None:
             if not approved_metadata and not any(
                 approved[k][b] for k in ("genre", "mood", "charts") for b in ("review", "create")
             ):
-                msg = "Nothing checked - nothing to save"
+                msg = "Nothing checked on this track - nothing to apply" if only_track_id is not None else "Nothing checked - nothing to save"
                 if skipped_no_category:
                     msg = f"{skipped_no_category} new-tag row(s) checked but no category chosen - pick one first"
                 elif skipped_empty_metadata:
@@ -1369,7 +1331,7 @@ def build_ui() -> None:
             if changed:
                 review_section.refresh()
 
-        ui.button("Apply", on_click=save).props("color=primary").classes("mt-4")
+        ui.button("Apply all", on_click=lambda: save()).props("color=primary").classes("mt-4")
 
     review_section()
 

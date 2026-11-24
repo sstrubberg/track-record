@@ -116,8 +116,8 @@ writes anything - "Apply" is the only action that does:
    showing up. Tags confident enough to auto-include
    show up **pre-checked**, marked with a green check and a tooltip
    explaining why - review them like anything else, uncheck one if you
-   disagree. Everything else starts unchecked; a global "Select all"
-   on top of each sub-group's own speeds up a big plan. Expect fewer
+   disagree. Everything else starts unchecked; each sub-group's own
+   "select all" speeds up a track. Expect fewer
    pre-checked rows in the Mood/Theme sub-groups than Genre/Subgenre
    tends to produce - mood/theme is a genuinely noisier task for a
    model to call from audio alone (see the top-level README for the
@@ -127,10 +127,11 @@ writes anything - "Apply" is the only action that does:
    page by default, configurable to 25/100/200 via the "tracks per
    page" picker above the list - and each track's rows aren't built
    until you actually expand it, so the screen stays responsive
-   regardless of plan size. "Select all" and Apply both act
-   across the *whole* plan, not just the visible page, so checking a
-   tag on page 1 and a different one on page 3 both make it into the
-   same Apply click. Different DJ edits of the same song (e.g.
+   regardless of plan size. "Apply all" acts across the *whole*
+   plan, not just the visible page, so checking a tag on page 1 and a
+   different one on page 3 both make it into the same click; "Apply
+   this track", at the top of each expanded track, applies only what is
+   checked on that one track. Different DJ edits of the same song (e.g.
    "(Intro Clean)" / "(Quick Hit Clean)") are detected automatically by
    artist + title, ignoring edit/version suffixes and matching on
    primary artist so a feature credit folded into one edit's Artist
@@ -148,7 +149,8 @@ writes anything - "Apply" is the only action that does:
    between edits in a way genre doesn't; see the top-level README's
    "Review" section for the full rationale.
 3. Check what you agree with (or leave the pre-checked ones as they
-   are) and hit **"Apply"** - the one action that writes to
+   are) and hit **"Apply this track"** on a track, or **"Apply all"** at the bottom
+   - the one action that writes to
    Lexicon, splitting whatever's checked by kind under the hood and
    reporting one combined result. Applying writes the updated plan back
    to its own JSON file immediately, not just to memory - a resolved row
@@ -197,8 +199,7 @@ Year and Genre fields and proposes fixes - see the top-level README's
 suggestions are. In the review list each fix is a row:
 ~~old value~~ → an editable box with the suggestion. **Nothing is
 pre-checked** - these overwrite existing values - but typing into a box
-checks it, and "Select all album / year / genre fixes" checks every row
-that has a value. A row with no suggestion has an empty box; type the
+checks it. A row with no suggestion has an empty box; type the
 answer in or leave it unchecked.
 Every expanded track has a **Copy artist - title** button at the top: it
 puts "Artist - Title" on the clipboard (DJ-pool tags like "(CLEAN)" and

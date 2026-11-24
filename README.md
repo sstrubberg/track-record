@@ -478,7 +478,8 @@ differently from the other three:
 One rule for the whole screen: **generating a plan never writes
 anything** - it's always just a preview, and exactly one action
 writes to Lexicon: **"Apply"**, which writes whatever is
-checked. Earlier builds had a second write path (an "Apply now"
+checked - either one track's ("Apply this track", in its own panel) or
+every track's ("Apply all", at the bottom of the page). Earlier builds had a second write path (an "Apply now"
 button for auto-include tags, gated by a separate "Dry run" checkbox)
 - collapsed into this one, since a DJ shouldn't need two different
 mental models for what's really one action.
@@ -507,10 +508,11 @@ action's* auto-include confidence bar (each action is tuned
 independently - see Scoring below) starts **pre-checked**, with a
 green check and a tooltip explaining why (and naturally sorts near the
 top of its sub-group, since rows are ordered by confidence) - still
-just a checkbox, uncheck it like any other if you disagree. A global
-"Select all" and each sub-group's own "select all" speed up working
-through a large plan; all of them just drive the same per-row
-checkboxes "Apply" reads.
+just a checkbox, uncheck it like any other if you disagree. Each
+sub-group's own "select all" speeds up working through a track; it just
+drives the same per-row checkboxes "Apply" reads. There is no global
+"select all": with a per-track "Apply this track" button you work down
+the list one track at a time instead.
 
 A plan spanning thousands of tracks is paginated - 50 tracks per page
 by default, configurable to 25/100/200 in the UI - with each track's
@@ -520,9 +522,7 @@ took the initial page from ~521,000 DOM nodes / 20.6s to build down to
 937 nodes / 0.73s. Checked/category state lives in memory keyed by
 track rather than in the on-page checkbox widgets themselves, so it
 survives turning the page - checking a tag on page 1 and a different
-one on page 3 both land in the same "Apply" click, and both
-"select all" controls act on the whole plan, not just the visible
-page.
+one on page 3 both land in the same "Apply all" click.
 
 A row proposing a tag that doesn't exist in the library yet also gets
 a category picker - always changeable, and never pre-checked
