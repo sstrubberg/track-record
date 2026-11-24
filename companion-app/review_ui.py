@@ -154,15 +154,30 @@ METADATA_PLAN_FILE = Path(__file__).resolve().parent / "metadata_plan.json"
 # "(Hook First)", "(Intro Clean)", "(Acapella)", "(Quick Hit)". A bracket
 # naming a real mix or a featured artist - "(Metamorphosis Mix)",
 # "(ft Rationale)" - is kept, since it is part of what you're looking for.
-_POOL_TAG = re.compile(
-    r"\s*[\(\[]\s*(?:clean|dirty|se|hook first|quick hit|acap\w*|(?:intro|outro)\b[^)\]]*|mm\b[^)\]]*|redrum\b[^)\]]*)\s*[\)\]]",
-    re.I,
+# DJ-pool edit tags that sit in brackets after a title: "(CLEAN)", "(MM Edit)",
+# "(ACA Drop In)", "(Hook-Verse-Bridge Only)"... A bracket is dropped when
+# every word in it is DJ-edit vocabulary, so "(Radio Edit)", "(Robin Schulz
+# Remix)" or "(ft Usher)" - which a search should keep - are left alone.
+_POOL_WORDS = frozenset(
+    "clean dirty semi se qh no rap explicit radio-safe "
+    "hook hooks verse verses bridge intro outro drop drops in out only first last "
+    "acap acapella acappella aca acas apella cappella beatapella clapapella clap "
+    "quick hit mm redrum edit".split()
 )
+_BRACKET = re.compile(r"\s*[\(\[]([^\)\]]*)[\)\]]")
+
+
+def _is_pool_tag(inner: str) -> bool:
+    words = [w for w in re.split(r"[\s\-&/,+]+", inner.lower()) if w]
+    return bool(words) and all(w in _POOL_WORDS for w in words)
 
 
 def search_text(artist: str | None, title: str | None) -> str:
     """"Artist - Title" for pasting into a search box, DJ-pool tags removed."""
-    clean = _POOL_TAG.sub("", title or "").strip() or (title or "")
+    raw = title or ""
+    clean = _BRACKET.sub(lambda m: "" if _is_pool_tag(m.group(1)) else m.group(0), raw)
+    clean = re.sub(r"\s*-{2,}\s*[\(\[].*$", "", clean)  # "---(sample note)" the pool appends
+    clean = re.sub(r"\s+", " ", clean).strip() or raw
     return f"{(artist or '').strip()} - {clean}".strip(" -")
 
 
