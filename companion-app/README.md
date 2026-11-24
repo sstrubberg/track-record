@@ -41,6 +41,7 @@ never gets committed:
 | Variable          | Used by                | Get one from |
 |-------------------|-------------------------|---------------|
 | `DISCOGS_TOKEN`   | `fetch/discogs.py`      | https://www.discogs.com/settings/developers (personal access token) |
+| `AUDIODB_API_KEY` (optional) | `fetch/release_years.py` | TheAudioDB works without it (free key, 30 requests/min); a premium key from https://www.theaudiodb.com/ raises the limit |
 | `ANTHROPIC_API_KEY` | `fetch/llm_web_search.py` (not yet built) | https://console.anthropic.com/ |
 
 ## Review UI (Genre/Subgenre, Mood/Theme, Charts, and Album/Year/Genre fixes)
@@ -207,8 +208,8 @@ puts "Artist - Title" on the clipboard (DJ-pool tags like "(CLEAN)",
 paste it into a search to check a suggestion yourself.
 
 - Needs Lexicon open (as always) and an internet connection. Each track
-  is looked up in iTunes, MusicBrainz and (with `DISCOGS_TOKEN` set) Discogs
-  - a few seconds the first time. Answers are cached in `year_cache.json`
+  is looked up in iTunes, MusicBrainz, TheAudioDB and (with `DISCOGS_TOKEN` set)
+  Discogs - several seconds the first time. Answers are cached in `year_cache.json`
   and `metadata_cache.json`, so re-scanning is instant. If a source is busy,
   requests retry with backoff; tracks that still couldn't be reached are
   counted in the "Plan ready" message and can be scanned again later.

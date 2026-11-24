@@ -18,6 +18,11 @@ judge by agreement instead of trusting any one:
                             that finds the original album)
 - Discogs master releases - needs DISCOGS_TOKEN (companion-app/.env);
                             skipped quietly if there isn't one
+- TheAudioDB              - free key "123" works out of the box (30
+                            requests/min; set AUDIODB_API_KEY for a
+                            premium key). Gives the *album's* year, so
+                            like iTunes it can run a year late for a
+                            single. Live albums are skipped.
 
 Wikipedia was measured too and left out: its infobox dates describe
 whichever release the article is about, and it added wrong "support" for
@@ -48,12 +53,14 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 CACHE_FILE = Path(__file__).resolve().parent.parent / "year_cache.json"
 NEGATIVE_TTL_DAYS = 30
-SOURCES = ("itunes", "musicbrainz", "discogs")
-SOURCE_LABELS = {"itunes": "iTunes", "musicbrainz": "MusicBrainz", "discogs": "Discogs"}
+SOURCES = ("itunes", "musicbrainz", "discogs", "audiodb")
+SOURCE_LABELS = {"itunes": "iTunes", "musicbrainz": "MusicBrainz", "discogs": "Discogs", "audiodb": "TheAudioDB"}
 
 USER_AGENT = "TrackRecord/0.1 +https://github.com/sstrubberg/track-record"
 _ITUNES_GAP = 2.0   # seconds between iTunes requests (its limit is ~20/min)
 _DISCOGS_GAP = 1.1  # Discogs allows 60/min with a token
+_AUDIODB_GAP = 2.1  # free key: 30/min, and each track costs two requests
+AUDIODB_FREE_KEY = "123"  # TheAudioDB's published free key ("2" no longer works)
 _last_call: dict[str, float] = {}
 
 
@@ -149,6 +156,51 @@ def discogs_year(artist: str, title: str) -> int | None:
     return min(years) if years else None
 
 
+def audiodb_year(artist: str, title: str) -> int | None:
+    """TheAudioDB: find the track, then read its album's release year (the
+    track record itself carries none). Looks at up to 3 matching tracks and
+    returns the earliest studio-album year; live albums are skipped."""
+    key = os.environ.get("AUDIODB_API_KEY") or AUDIODB_FREE_KEY
+    base = f"https://www.theaudiodb.com/api/v1/json/{key}"
+    a = mb._primary_artist(artist)
+    t = mb._strip_edit_suffixes(title)
+    try:
+        r = _get("audiodb", _AUDIODB_GAP, f"{base}/searchtrack.php", params={"s": a, "t": t})
+    except SourceUnavailable:
+        raise
+    except requests.HTTPError as e:
+        # A key the service doesn't recognise answers 404 {"Message":"Not found"}.
+        raise KeyError(f"TheAudioDB rejected the key: {e}")
+    tracks = (r.json() or {}).get("track") or []
+    years = []
+    seen_albums = set()
+    for x in tracks:
+        if _norm(x.get("strTrack")) != _norm(t):
+            continue
+        if _norm(mb._primary_artist(x.get("strArtist"))) != _norm(a):
+            continue
+        album_id = x.get("idAlbum")
+        if not album_id or album_id in seen_albums or mbr.JUNK_ALBUM_RE.search(x.get("strAlbum") or ""):
+            continue
+        seen_albums.add(album_id)
+        if len(seen_albums) > 3:
+            break
+        try:
+            ar = _get("audiodb", _AUDIODB_GAP, f"{base}/album.php", params={"m": album_id})
+        except requests.HTTPError:
+            continue
+        for alb in (ar.json() or {}).get("album") or []:
+            if re.search(r"live|compilation|bootleg", alb.get("strReleaseFormat") or "", re.I):
+                continue
+            if re.search(r"\b(live|karaoke)\b|\d{4}-\d\d-\d\d", alb.get("strAlbum") or "", re.I):
+                continue
+            try:
+                years.append(int(alb.get("intYearReleased")))
+            except (TypeError, ValueError):
+                pass
+    return min(years) if years else None
+
+
 def _load_cache() -> dict:
     try:
         return json.loads(CACHE_FILE.read_text())
@@ -181,7 +233,7 @@ def _cached(cache: dict, name: str, artist: str, title: str, fetch):
 def lookup(artist: str, title: str) -> dict:
     """Ask every source.
 
-    {"years": {"itunes": int|None, "musicbrainz": int|None, "discogs": int|None},
+    {"years": {"itunes": int|None, "musicbrainz": int|None, "discogs": int|None, "audiodb": int|None},
      "release": MusicBrainz's original-album answer or None (for the Album field),
      "recording_id": MusicBrainz recording id or None,
      "unavailable": [source names that couldn't be reached]}
@@ -201,7 +253,7 @@ def lookup(artist: str, title: str) -> dict:
 
     cache = _load_cache()
     before = json.dumps(cache, sort_keys=True)
-    for name, fetch in (("itunes", itunes_year), ("discogs", discogs_year)):
+    for name, fetch in (("itunes", itunes_year), ("discogs", discogs_year), ("audiodb", audiodb_year)):
         try:
             years[name] = _cached(cache, name, artist, title, fetch)
         except SourceUnavailable:
@@ -240,7 +292,7 @@ def consensus(years: dict) -> dict:
 
 
 def describe(years: dict) -> str:
-    """'iTunes 2003 · MusicBrainz 2000 · Discogs none'."""
+    """'iTunes 2003 · MusicBrainz 2000 · Discogs none · TheAudioDB 2001'."""
     return " · ".join(
         f"{SOURCE_LABELS[n]} {years[n] if years[n] is not None else 'none'}" for n in SOURCES if n in years
     )

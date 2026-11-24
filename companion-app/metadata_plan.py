@@ -17,7 +17,7 @@ What it looks for, per track:
   song's own single/EP where it never had one.
 
   Year is the field that matters, and no single database reliably knows
-  it (fetch/release_years.py: iTunes, MusicBrainz and Discogs are each
+  it (fetch/release_years.py: iTunes, MusicBrainz, Discogs and TheAudioDB are each
   right about 7 times in 10, and tend to be wrong in different ways). So
   it is judged by agreement. The current year is left alone if ANY
   source is within a year of it - one source missing the original (B4-4
@@ -329,7 +329,7 @@ def generate_plan(
         tracks = [t for t in tracks if t["id"] == track_id]
     if limit and scan_mode != "recent":
         tracks = tracks[:limit]
-    status(f"planning {len(tracks)} track(s) - three year sources, rate-limited; uncached tracks take a few seconds each")
+    status(f"planning {len(tracks)} track(s) - four year sources, rate-limited; uncached tracks take a few seconds each")
 
     review_all: list[dict] = []
     lookup_failed: list[dict] = []

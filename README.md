@@ -440,8 +440,9 @@ differently from the other three:
   Hip-Hop/Rap). Spellings your library already mixes ("Hip-Hop" /
   "Hip-Hop/Rap", "R&B" / "R&B/Soul/Funk") aren't treated as a mismatch.
 - **How the year is judged.** The year is the field that matters, and no
-  single database reliably knows it: iTunes, MusicBrainz and Discogs
-  (Discogs needs your `DISCOGS_TOKEN`; without it just two are used) were
+  single database reliably knows it: iTunes, MusicBrainz, Discogs and
+  TheAudioDB (Discogs needs your `DISCOGS_TOKEN`; TheAudioDB works on its
+  free key, `AUDIODB_API_KEY` is optional) were
   each right about 7 times in 10 against a hand-checked set, and they err
   in *different* ways. So the year is judged by agreement. Your year is left
   alone if **any** source is within a year of it - one source missing the
@@ -450,7 +451,7 @@ differently from the other three:
   two or more sources answered and none supports your year. The suggestion
   is the year at least two sources agree on, and the row shows every
   source's answer ("iTunes 1978 · MusicBrainz 1978 · Discogs 1978") plus
-  how strongly they agree (when all three give the same year the row gets a
+  how strongly they agree (when three or more give the same year the row gets a
   quiet green check and green text); if they disagree with each other, or the title
   is a remix/version (the databases describe the original song), the box
   is left empty for you. Album comes from MusicBrainz's original release.

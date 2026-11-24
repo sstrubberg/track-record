@@ -1046,7 +1046,7 @@ def build_ui() -> None:
                             cb.value = True
 
                     box.on_value_change(on_edit)
-                    # Year suggestions all three sources agree on (the plan
+                    # Year suggestions three or more sources agree on (the plan
                     # stores those at 0.85; two-source agreement is 0.65)
                     # get a quiet green check instead of the grey info
                     # icon, and only while the box still holds the
@@ -1054,7 +1054,7 @@ def build_ui() -> None:
                     strong = row["field"] == "year" and row["new"] is not None and row["confidence"] >= 0.85
                     if strong:
                         tick = ui.icon("verified", color="green").props("size=xs").classes("shrink-0")
-                        tick.tooltip("Strong agreement - all three sources give this year")
+                        tick.tooltip("Strong agreement - three or more sources give this year")
                         info_icon = ui.icon("info", color="grey").props("size=xs").classes("shrink-0")
                         info_icon.tooltip(row["reason"])
                         info_icon.set_visibility(False)
