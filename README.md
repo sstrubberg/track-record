@@ -450,7 +450,8 @@ differently from the other three:
   two or more sources answered and none supports your year. The suggestion
   is the year at least two sources agree on, and the row shows every
   source's answer ("iTunes 1978 · MusicBrainz 1978 · Discogs 1978") plus
-  how strongly they agree; if they disagree with each other, or the title
+  how strongly they agree (when all three give the same year the row gets a
+  quiet green check and green text); if they disagree with each other, or the title
   is a remix/version (the databases describe the original song), the box
   is left empty for you. Album comes from MusicBrainz's original release.
   On the hand-checked set this raised year rows on about 1 track in 10,
