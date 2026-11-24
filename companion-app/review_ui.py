@@ -1114,12 +1114,6 @@ def build_ui() -> None:
                         "navigator.clipboard.writeText(t).catch(fallback); } else { fallback(); }"
                         "emit(); }"
                     )
-                    with ui.row().classes("items-center gap-2 mt-1"):
-                        ui.button("Copy artist - title", icon="content_copy").props(
-                            "flat dense no-caps size=sm"
-                        ).tooltip(text).on(
-                            "click", lambda text=text: notify(f"Copied: {text}"), js_handler=copy_js,
-                        )
                     if genre_rows:
                         render_rows(genre_rows, "Select all genre tags for this track")
                     if mood_rows:
@@ -1132,7 +1126,14 @@ def build_ui() -> None:
                     # kinds), at the bottom so you apply after reviewing the
                     # rows; "Apply all" at the bottom of the page does every
                     # track.
-                    with ui.row().classes("w-full justify-end mt-2 mb-1"):
+                    # Footer: Copy on the left (to check a doubtful row
+                    # yourself), Apply on the right.
+                    with ui.row().classes("w-full items-center justify-between mt-2 mb-1"):
+                        ui.button("Copy artist - title", icon="content_copy").props(
+                            "flat dense no-caps size=sm"
+                        ).tooltip(text).on(
+                            "click", lambda text=text: notify(f"Copied: {text}"), js_handler=copy_js,
+                        )
                         ui.button(
                             "Apply selected metadata to this track", icon="check",
                             on_click=lambda tid=track_id: save(tid),

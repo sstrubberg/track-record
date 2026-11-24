@@ -201,7 +201,7 @@ suggestions are. In the review list each fix is a row:
 pre-checked** - these overwrite existing values - but typing into a box
 checks it. A row with no suggestion has an empty box; type the
 answer in or leave it unchecked.
-Every expanded track has a **Copy artist - title** button at the top: it
+Every expanded track has a **Copy artist - title** button at the bottom, beside Apply: it
 puts "Artist - Title" on the clipboard (DJ-pool tags like "(CLEAN)" and
 "(MM Edit)" removed, real mix names and featured artists kept) so you can
 paste it into a search to check a suggestion yourself.
