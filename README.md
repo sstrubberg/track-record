@@ -478,7 +478,7 @@ differently from the other three:
 One rule for the whole screen: **generating a plan never writes
 anything** - it's always just a preview, and exactly one action
 writes to Lexicon: **"Apply"**, which writes whatever is
-checked - either one track's ("Apply this track", in its own panel) or
+checked - either one track's ("Apply selected metadata to this track", at the bottom of its own panel) or
 every track's ("Apply all", at the bottom of the page). Earlier builds had a second write path (an "Apply now"
 button for auto-include tags, gated by a separate "Dry run" checkbox)
 - collapsed into this one, since a DJ shouldn't need two different
@@ -511,7 +511,7 @@ top of its sub-group, since rows are ordered by confidence) - still
 just a checkbox, uncheck it like any other if you disagree. Each
 sub-group's own "select all" speeds up working through a track; it just
 drives the same per-row checkboxes "Apply" reads. There is no global
-"select all": with a per-track "Apply this track" button you work down
+"select all": with a per-track "Apply selected metadata to this track" button you work down
 the list one track at a time instead.
 
 A plan spanning thousands of tracks is paginated - 50 tracks per page

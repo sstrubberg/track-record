@@ -149,7 +149,7 @@ writes anything - "Apply" is the only action that does:
    between edits in a way genre doesn't; see the top-level README's
    "Review" section for the full rationale.
 3. Check what you agree with (or leave the pre-checked ones as they
-   are) and hit **"Apply this track"** on a track, or **"Apply all"** at the bottom
+   are) and hit **"Apply selected metadata to this track"** at the bottom of a track, or **"Apply all"** at the bottom
    - the one action that writes to
    Lexicon, splitting whatever's checked by kind under the hood and
    reporting one combined result. Applying writes the updated plan back

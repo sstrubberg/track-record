@@ -1120,12 +1120,6 @@ def build_ui() -> None:
                         ).tooltip(text).on(
                             "click", lambda text=text: notify(f"Copied: {text}"), js_handler=copy_js,
                         )
-                        # Applies only what's checked on THIS track (all
-                        # four kinds); "Apply all" at the bottom of the
-                        # page does every track.
-                        ui.button("Apply this track", icon="check", on_click=lambda tid=track_id: save(tid)).props(
-                            "color=primary dense no-caps size=sm"
-                        )
                     if genre_rows:
                         render_rows(genre_rows, "Select all genre tags for this track")
                     if mood_rows:
@@ -1134,6 +1128,15 @@ def build_ui() -> None:
                         render_rows(charts_rows, "Select all chart tags for this track")
                     if metadata_rows:
                         render_metadata_rows(metadata_rows)
+                    # Applies only what's checked on THIS track (all four
+                    # kinds), at the bottom so you apply after reviewing the
+                    # rows; "Apply all" at the bottom of the page does every
+                    # track.
+                    with ui.row().classes("w-full justify-end mt-2 mb-1"):
+                        ui.button(
+                            "Apply selected metadata to this track", icon="check",
+                            on_click=lambda tid=track_id: save(tid),
+                        ).props("color=primary dense no-caps size=sm")
 
             # Starts open if it was open before whatever triggered this
             # render (see state["expanded_tracks"]'s own comment) -
